@@ -73,3 +73,67 @@ extern "C" void block_curvature(float * summed_area_tabv, int binarized_rows, in
         curvature_vec(ind) = this_summed_area; 
     }
 }
+
+float get_te_cost(int row, int col, int i, const MatrixXf & cost, const ExternNDArrayf & gradient_img) {
+    if ((row + i < 0) || (row + i >= cost.rows()) || (col == 0)) {
+        return INFINITY;
+    } else {
+        return cost(row+i, col-1) + gradient_img(row, col);
+    }
+}
+
+
+
+extern "C" float find_trailing_edge(float * gradient_imgv, int gradient_rows, int gradient_cols,
+                                   int startcol, int endrow, int endcol,
+                                   int n_neighbors, int * outpathv) {
+    ExternNDArrayf gradient_img(gradient_imgv, gradient_rows, gradient_cols);
+    ExternNDArrayi outpath(outpathv, endcol - startcol, 2);
+    /* Assume the gradient image is all setup, initialize cost and back */
+
+    VectorXi neighbor_range(n_neighbors);
+    //printf("Building neighbor range\n");
+    for (struct {int ind; int neighbor;} N = {0, (-1 * n_neighbors / 2)};
+         N.neighbor<(n_neighbors / 2) + 1;
+         N.neighbor++, N.ind++) {
+        neighbor_range(N.ind,0) = N.neighbor;
+    }
+    MatrixXf cost = MatrixXf::Zero(gradient_rows, gradient_cols);
+    MatrixXi back = MatrixXi::Zero(gradient_rows, gradient_cols);
+    
+    //printf("Looping over image\n");
+    for (int col = startcol; col <= endcol; col++) {
+        for (int row = 0; row < gradient_rows; row++) {
+            // argmin over candidates
+            int best_candidate = n_neighbors / 2; // middle
+            float best_cand_cost = INFINITY;
+            for (int i=0; i < neighbor_range.rows(); i++) {
+                float cand_cost = get_te_cost(row, col, neighbor_range(i, 0), cost, gradient_img);
+                if (cand_cost < best_cand_cost) {
+                    best_candidate = neighbor_range(i, 0);
+                    best_cand_cost = cand_cost;
+                }
+            }
+
+            back(row, col) = best_candidate;
+            cost(row, col) = best_cand_cost;
+        }
+    }
+    // Now determine the optimal path from the endrow, endcol position
+    // We'll store the result in outpath -- since we know how that the path is constructed 
+    // One column at a time, we know how big the path will be ahead of time, which is very helpful
+    int curr_row = endrow;
+    float total_cost = 0;
+    //printf("Reconstructing the optimal path\n");
+    for (struct {int ind; int col;} P = {0, endcol}; 
+         P.col > startcol; P.col--, P.ind++) {
+        total_cost += cost(curr_row, P.col);
+        // x, y
+        outpath(P.ind, 0) = P.col;
+        outpath(P.ind, 1) = curr_row;
+
+        curr_row = curr_row + back(curr_row, P.col);
+    }
+
+    return total_cost;
+}

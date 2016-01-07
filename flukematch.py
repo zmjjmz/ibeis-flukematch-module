@@ -57,7 +57,34 @@ def find_trailing_edge(img, start, end, center=None, n_neighbors=3):
 lib = ctypes.cdll.LoadLibrary('./flukematch_lib.so')
 
 ndmat_f_type = np.ndpointer(dtype=np.float32, ndim=2, flags='C_CONTIGUOUS')
-ndmat_i_type = np.ndpointer(dtype=np.int32, ndiim=2, flags='C_CONTIGUOUS')
+ndmat_i_type = np.ndpointer(dtype=np.int32, ndim=2, flags='C_CONTIGUOUS')
+
+find_te = lib.find_trailing_edge
+find_te.argtypes = [ndmat_f_type, ctypes.c_int, ctypes.c_int, # image and size info
+                   ctypes.c_int, ctypes.c_int, ctypes.c_int, # startcol, endrow, endcol
+                   ctypes.c_int, ndmat_i_type] # number of neighbors, output path
+
+
+def find_trailing_edge_cpp(img, start, end, center, n_neighbors=5):
+    # points are x,y
+    if len(img.shape) == 3:
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    assert(n_neighbors % 2 == 1)
+    gradient_y_image = 1*cv2.Sobel(img,cv2.CV_32F,0,1,ksize=5)
+
+    gradient_y_image[:, start[0]] = np.inf
+    gradient_y_image[start[1],start[0]] = 0
+
+    gradient_y_image[:,end[0]] = np.inf
+    gradient_y_image[end[1],end[0]] = 0
+
+    gradient_y_image[:,center[0]] = np.inf
+    gradient_y_image[center[1], center[0]] = 0
+
+    outpath = np.zeros((end[0] - start[0], 2), dtype=np.int32)
+    cost = te_cpp(gradient_y_image, gradient_y_image.shape[0], gradient_y_image.shape[1],
+                  start[0], end[1], end[0], n_neighbors, outpath)
+    return outpath, cost
 
 block_curv = lib.block_curvature
 block_curv.argtypes = [ndmat_f_type, # summed_area_table,
