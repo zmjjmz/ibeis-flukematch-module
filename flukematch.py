@@ -119,7 +119,7 @@ dtw_curvweighted.argtypes = [ndmat_f_type, ndmat_f_type, # curvatures
                              ctypes.c_int, ctypes.c_int, # window, number of sizes
                              ndmat_f_type, ndmat_f_type] # weights, output
 
-def get_dist_mat_curvweighted(query_curv, db_curv, curv_weights, window=50):
+def get_distance_curvweighted(query_curv, db_curv, curv_weights, window=50):
     ordered_sizes = sorted(curv_weights.keys())
     # we just need to stack the curvatures and make sure that the ordering is consistent w/curv_weights
     curv_weights_nd = np.array([curv_weights[i] for i in ordered_sizes],dtype=np.float32)
@@ -133,6 +133,7 @@ def get_dist_mat_curvweighted(query_curv, db_curv, curv_weights, window=50):
     dtw_curvweighted(
                query_curv_nd, db_curv_nd, query_len, db_len, window,
                curv_weights_nd.shape[0], curv_weights_nd, distance_mat)
-    return distance_mat.reshape(query_len, db_len)
+    distance = distance_mat[-1,-1]
+    return distance
 
 

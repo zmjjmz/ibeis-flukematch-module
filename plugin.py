@@ -1,10 +1,14 @@
+from __future__ import division, print_function
 import ibeis
+import utool as ut
 import numpy as np
 from os.path import join, exists
 import cPickle as pickle
+from collections import defaultdict
 from flukematch import (
         find_trailing_edge,
         block_integral_curvatures_cpp,
+        get_distance_curvweighted,
 )
 
 # register : name, parent(s), cols, dtypes
@@ -70,6 +74,34 @@ def preproc_block_curvature(depc_obj, aid_list, config={'sizes':[5,10,15,20]}):
 
 
 
+@ibeis.register_id_algo('BC-DTW', ['Block-Curvature'], ['bcdtwmatch'], [ibeis.AnnotMatch.load])
+def id_algo_bc_dtw(depc_obj, qaid_list, config={'verbose':False, 'daid_list':None, 'decision':np.average, 'sizes':[5,10,15,20], 'weights':None}):
+    assert(config['daid_list'] is not None)
+    if weights is not None:
+        assert(len(weights) == len(sizes))
+    else:
+        weights = [1.] * len(sizes)
 
+    ibs = depc_obj.controller
+    daid_list = config['daid_list']
+    block_config = ut.dict_subset(config, ['sizes'])
+    query_curvs = depc_obj.get_property('Block-Curvature', qaid_list, config=block_config)
+    db_curvs = depc_obj.get_property('Block-Curvature', daid_list, config=block_config)
+
+    qnid_list = ibs.get_annot_nids(qaid_list)
+    dnid_list = ibs.get_annot_nids(daid_list)
+
+    for query_curv, qaid, qnid in ut.ProgressIter(zip(query_curvs, qaid_list, qnid_list), lbl='QueryAID', enabled=config['verbose']):
+        dists_by_nid = defaultdict(lambda:[])
+        daid_dists = []
+        for db_curv, daid, dnid in zip(db_curvs, daid_list, dnid_list):
+            distance = get_distance_curvweighted(query_curv, db_curv, weights)
+            daid_dists.append(-1*distance)
+            dists_by_nid[dnid].append(-1*distance)
+
+        dists_by_nid = {dnid:config['decision'](dists_by_nid[dnid]) for dnid in dists_by_nid}
+        dnid_dists = [dists_by_nid[dnid] for dnid in dnid_list]
+
+        yield ibeis.AnnotMatch(qaid, qnid, daid_list, dnid_list, daid_dists, dnid_dists)
 
 
