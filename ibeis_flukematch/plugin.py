@@ -12,7 +12,7 @@ from flukematch import (find_trailing_edge_cpp, block_integral_curvatures_cpp,
 # register : name, parent(s), cols, dtypes
 
 
-@ibeis.register_preproc('Notch-Tips', ['annot'], ['notch', 'left', 'right'], [np.ndarray, np.ndarray, np.ndarray])
+@ibeis.register_preproc('Notch_Tips', ['annot'], ['notch', 'left', 'right'], [np.ndarray, np.ndarray, np.ndarray])
 def preproc_notch_tips(depc_obj, aid_list, config={}):
     r"""
     Args:
@@ -29,17 +29,19 @@ def preproc_notch_tips(depc_obj, aid_list, config={}):
     Example:
         >>> # DISABLE_DOCTEST
         >>> from ibeis_flukematch.plugin import *  # NOQA
-        >>> ibs = ibeis.opendb('...')
+        >>> ibs = ibeis.opendb('humpbacks')
         >>> aid_list = ibs.get_valid_aids()
         >>> config = {}
-        >>> result = preproc_notch_tips(depc_obj, aid_list, config)
+        >>> result = preproc_notch_tips(ibs.depc, aid_list, config)
+        >>> result = list(result)
+        >>> print(len(filter(lambda x: x is not None, result)))
     """
     ibs = depc_obj.controller
     # TODO: Implement manual annotation options
     # HACK: Read in a file that associates image names w/these annotations, and try to associate these w/the image names
     # HACK: hardcode this filename relative to the IBEIS directory
 
-    fn = join(ibs.getdbdir(), 'fluke_image_points.pkl')
+    fn = join(ibs.get_dbdir(), 'fluke_image_points.pkl')
     if not exists(fn):
         print("[fluke-module] ERROR: Could not find image points file")
         raise NotImplementedError
@@ -50,7 +52,7 @@ def preproc_notch_tips(depc_obj, aid_list, config={}):
         img_points_map = pickle.load(f)
 
     img_names = ibs.get_annot_image_names(aid_list)
-    for imgn in img_names:
+    for imgn in ut.ProgIter(img_names):
         try:
             yield (img_points_map[imgn]['notch'],
                    img_points_map[imgn]['left'],
@@ -58,10 +60,11 @@ def preproc_notch_tips(depc_obj, aid_list, config={}):
         except KeyError:
             print(
                 "[fluke-module] ERROR: aid given that does not have points associated")
-            raise NotImplementedError
+            yield None
+            #raise NotImplementedError
 
 
-@ibeis.register_preproc('Trailing-Edge', ['Notch-Tips'], ['edge', 'cost'], [np.ndarray, np.float32])
+@ibeis.register_preproc('Trailing_Edge', ['Notch_Tips'], ['edge', 'cost'], [np.ndarray, float])
 def preproc_trailing_edge(depc_obj, aid_list, config={'n_neighbors': 5}):
     r"""
     Args:
@@ -102,7 +105,7 @@ def preproc_trailing_edge(depc_obj, aid_list, config={'n_neighbors': 5}):
         yield (tedge, cost)
 
 
-@ibeis.register_preproc('Block-Curvature', ['Trailing-Edge'], ['curvature'], [np.ndarray])
+@ibeis.register_preproc('Block_Curvature', ['Trailing_Edge'], ['curvature'], [np.ndarray])
 def preproc_block_curvature(depc_obj, aid_list, config={'sizes': [5, 10, 15, 20]}):
     r"""
     Args:
@@ -126,7 +129,7 @@ def preproc_block_curvature(depc_obj, aid_list, config={'sizes': [5, 10, 15, 20]
     """
     ibs = depc_obj.controller
     # get the trailing edges
-    tedges, _ = zip(*ibs.depc.get_property('Trailing-Edge', aid_list))
+    tedges, _ = zip(*ibs.depc.get_property('Trailing_Edge', aid_list))
     try:
         sizes = config['sizes']
     except KeyError:
@@ -138,7 +141,7 @@ def preproc_block_curvature(depc_obj, aid_list, config={'sizes': [5, 10, 15, 20]
         yield block_integral_curvatures_cpp(tedge, sizes)
 
 
-@ibeis.register_id_algo('BC-DTW', ['Block-Curvature'], ['bcdtwmatch'], [ibeis.AnnotMatch.load_from_fpath])
+@ibeis.register_id_algo('BC_DTW', ['Block_Curvature'], ['bcdtwmatch'], [ibeis.AnnotMatch.load_from_fpath])
 def id_algo_bc_dtw(depc_obj, qaid_list, config={'verbose': False, 'daid_list': None, 'decision': np.average, 'sizes': [5, 10, 15, 20], 'weights': None}):
     r"""
     Args:
@@ -179,9 +182,9 @@ def id_algo_bc_dtw(depc_obj, qaid_list, config={'verbose': False, 'daid_list': N
     daid_list = config['daid_list']
     block_config = ut.dict_subset(config, ['sizes'])
     query_curvs = depc_obj.get_property(
-        'Block-Curvature', qaid_list, config=block_config)
+        'Block_Curvature', qaid_list, config=block_config)
     db_curvs = depc_obj.get_property(
-        'Block-Curvature', daid_list, config=block_config)
+        'Block_Curvature', daid_list, config=block_config)
 
     qnid_list = ibs.get_annot_nids(qaid_list)
     dnid_list = ibs.get_annot_nids(daid_list)

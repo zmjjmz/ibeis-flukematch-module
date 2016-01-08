@@ -65,7 +65,8 @@ def find_trailing_edge(img, start, end, center=None, n_neighbors=3):
     return path, path_cost, cost
 
 
-lib = ctypes.cdll.LoadLibrary('./flukematch_lib.so')
+from os.path import dirname, join
+lib = ctypes.cdll.LoadLibrary(join(dirname(__file__), 'flukematch_lib.so'))
 
 ndmat_f_type = np.ctypeslib.ndpointer(dtype=np.float32, ndim=2, flags='C_CONTIGUOUS')
 ndmat_i_type = np.ctypeslib.ndpointer(dtype=np.int32, ndim=2, flags='C_CONTIGUOUS')
