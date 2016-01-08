@@ -67,8 +67,8 @@ def find_trailing_edge(img, start, end, center=None, n_neighbors=3):
 
 lib = ctypes.cdll.LoadLibrary('./flukematch_lib.so')
 
-ndmat_f_type = np.ndpointer(dtype=np.float32, ndim=2, flags='C_CONTIGUOUS')
-ndmat_i_type = np.ndpointer(dtype=np.int32, ndim=2, flags='C_CONTIGUOUS')
+ndmat_f_type = np.ctypeslib.ndpointer(dtype=np.float32, ndim=2, flags='C_CONTIGUOUS')
+ndmat_i_type = np.ctypeslib.ndpointer(dtype=np.int32, ndim=2, flags='C_CONTIGUOUS')
 
 find_te = lib.find_trailing_edge
 find_te.argtypes = [ndmat_f_type, ctypes.c_int, ctypes.c_int,  # image and size info
@@ -93,15 +93,16 @@ def find_trailing_edge_cpp(img, start, end, center, n_neighbors=5):
     gradient_y_image[center[1], center[0]] = 0
 
     outpath = np.zeros((end[0] - start[0], 2), dtype=np.int32)
-    cost = te_cpp(gradient_y_image, gradient_y_image.shape[0], gradient_y_image.shape[1],
-                  start[0], end[1], end[0], n_neighbors, outpath)
+    cost = find_trailing_edge_cpp(gradient_y_image, gradient_y_image.shape[0],
+                                  gradient_y_image.shape[1], start[0], end[1],
+                                  end[0], n_neighbors, outpath)
     return outpath, cost
 
 block_curv = lib.block_curvature
 block_curv.argtypes = [ndmat_f_type,  # summed_area_table,
                        ctypes.c_int, ctypes.c_int,  # summed_area_table shape
                        ndmat_i_type, ctypes.c_int,  # trailing edge and length
-                       ctypes.c_int, nmat_f_type, ]  # size, output
+                       ctypes.c_int, ndmat_f_type, ]  # size, output
 
 
 def block_integral_curvatures_cpp(sizes, coords):
@@ -118,8 +119,8 @@ def block_integral_curvatures_cpp(sizes, coords):
     summed_table = binarized.cumsum(axis=0).cumsum(axis=1)
     curvs = {}
 
-    coords_flat = fixed_coords.flatten()
-    sat_flat = summed_table.flatten()
+    #coords_flat = fixed_coords.flatten()
+    #sat_flat = summed_table.flatten()
     for size in sizes:
         # compute curvature using separate calls to block_curv for each
         curvs[size] = np.zeros((fixed_coords.shape[0], 1), dtype=np.float32)
@@ -154,3 +155,14 @@ def get_distance_curvweighted(query_curv, db_curv, curv_weights, window=50):
         curv_weights_nd.shape[0], curv_weights_nd, distance_mat)
     distance = distance_mat[-1, -1]
     return distance
+
+if __name__ == '__main__':
+    r"""
+    CommandLine:
+        python -m ibeis_flukematch.flukematch
+        python -m ibeis_flukematch.flukematch --allexamples
+    """
+    import multiprocessing
+    multiprocessing.freeze_support()  # for win32
+    import utool as ut  # NOQA
+    ut.doctest_funcs()

@@ -2,20 +2,38 @@ from __future__ import division, print_function
 import ibeis
 import utool as ut
 import numpy as np
+import cv2
 from os.path import join, exists
 import cPickle as pickle
 from collections import defaultdict
-from flukematch import (
-    find_trailing_edge,
-    block_integral_curvatures_cpp,
-    get_distance_curvweighted,
-)
+from flukematch import (find_trailing_edge_cpp, block_integral_curvatures_cpp,
+                        get_distance_curvweighted,)
 
 # register : name, parent(s), cols, dtypes
 
 
 @ibeis.register_preproc('Notch-Tips', ['annot'], ['notch', 'left', 'right'], [np.ndarray, np.ndarray, np.ndarray])
 def preproc_notch_tips(depc_obj, aid_list, config={}):
+    r"""
+    Args:
+        depc_obj (DependencyCache):
+        aid_list (list):  list of annotation rowids
+        config (dict): (default = {})
+
+    Yields:
+        tuple: (np.ndarray, np.ndarray, np.ndarray)
+
+    CommandLine:
+        python -m ibeis_flukematch.plugin --exec-preproc_notch_tips
+
+    Example:
+        >>> # DISABLE_DOCTEST
+        >>> from ibeis_flukematch.plugin import *  # NOQA
+        >>> ibs = ibeis.opendb('...')
+        >>> aid_list = ibs.get_valid_aids()
+        >>> config = {}
+        >>> result = preproc_notch_tips(depc_obj, aid_list, config)
+    """
     ibs = depc_obj.controller
     # TODO: Implement manual annotation options
     # HACK: Read in a file that associates image names w/these annotations, and try to associate these w/the image names
@@ -45,6 +63,26 @@ def preproc_notch_tips(depc_obj, aid_list, config={}):
 
 @ibeis.register_preproc('Trailing-Edge', ['Notch-Tips'], ['edge', 'cost'], [np.ndarray, np.float32])
 def preproc_trailing_edge(depc_obj, aid_list, config={'n_neighbors': 5}):
+    r"""
+    Args:
+        depc_obj (DependencyCache):
+        aid_list (list):  list of annotation rowids
+        config (dict): (default = {'n_neighbors': 5})
+
+    Yields:
+        tuple: (tedge, cost)
+
+    CommandLine:
+        python -m ibeis_flukematch.plugin --exec-preproc_trailing_edge --show
+
+    Example:
+        >>> # DISABLE_DOCTEST
+        >>> from ibeis_flukematch.plugin import *  # NOQA
+        >>> depc_obj = '?'
+        >>> aid_list = ibs.get_valid_aids()
+        >>> config = {'n_neighbors': 5}
+        >>> (tedge, cost) = preproc_trailing_edge(depc_obj, aid_list, config)
+    """
     ibs = depc_obj.controller
     # get the notch / left / right points
     points = ibs.depc.get_property('Notch-Tips', aid_list)
@@ -66,6 +104,26 @@ def preproc_trailing_edge(depc_obj, aid_list, config={'n_neighbors': 5}):
 
 @ibeis.register_preproc('Block-Curvature', ['Trailing-Edge'], ['curvature'], [np.ndarray])
 def preproc_block_curvature(depc_obj, aid_list, config={'sizes': [5, 10, 15, 20]}):
+    r"""
+    Args:
+        depc_obj (DependencyCache):
+        aid_list (list):  list of annotation rowids
+        config (dict): (default = {'sizes': [5, 10, 15, 20]})
+
+    Yields:
+        list: [np.ndarray]
+
+    CommandLine:
+        python -m ibeis_flukematch.plugin --exec-preproc_block_curvature --show
+
+    Example:
+        >>> # DISABLE_DOCTEST
+        >>> from ibeis_flukematch.plugin import *  # NOQA
+        >>> depc_obj = '?'
+        >>> aid_list = ibs.get_valid_aids()
+        >>> config = {'sizes': [5, 10, 15, 20]}
+        >>> result = preproc_block_curvature(depc_obj, aid_list, config)
+    """
     ibs = depc_obj.controller
     # get the trailing edges
     tedges, _ = zip(*ibs.depc.get_property('Trailing-Edge', aid_list))
@@ -80,9 +138,38 @@ def preproc_block_curvature(depc_obj, aid_list, config={'sizes': [5, 10, 15, 20]
         yield block_integral_curvatures_cpp(tedge, sizes)
 
 
-@ibeis.register_id_algo('BC-DTW', ['Block-Curvature'], ['bcdtwmatch'], [ibeis.AnnotMatch.load])
+@ibeis.register_id_algo('BC-DTW', ['Block-Curvature'], ['bcdtwmatch'], [ibeis.AnnotMatch.load_from_fpath])
 def id_algo_bc_dtw(depc_obj, qaid_list, config={'verbose': False, 'daid_list': None, 'decision': np.average, 'sizes': [5, 10, 15, 20], 'weights': None}):
+    r"""
+    Args:
+        depc_obj (DependencyCache):
+        qaid_list (list):
+        config (dict): (default = {'weights': None,
+            'decision': <function average at 0x7ff71b2bd7d0>, 'daid_list':
+                None, 'verbose': False, 'sizes': [5, 10, 15, 20]})
+
+    Yields:
+        ibeis.AnnotMatch:
+
+    CommandLine:
+        python -m ibeis_flukematch.plugin --exec-id_algo_bc_dtw --show
+
+    Example:
+        >>> # DISABLE_DOCTEST
+        >>> from ibeis_flukematch.plugin import *  # NOQA
+        >>> depc_obj = '?'
+        >>> qaid_list = '?'
+        >>> config = {'weights': None, 'decision': np.average, 'daid_list': None,
+        >>>           'verbose': False, 'sizes': [5, 10, 15, 20]}
+        >>> result = id_algo_bc_dtw(depc_obj, qaid_list, config)
+        >>> print(result)
+        >>> ut.quit_if_noshow()
+        >>> import plottool as pt
+        >>> ut.show_if_requested()
+    """
     assert(config['daid_list'] is not None)
+    weights = config['weights']
+    sizes = config['sizes']
     if weights is not None:
         assert(len(weights) == len(sizes))
     else:
@@ -112,3 +199,15 @@ def id_algo_bc_dtw(depc_obj, qaid_list, config={'verbose': False, 'daid_list': N
         dnid_dists = [dists_by_nid[dnid] for dnid in dnid_list]
 
         yield ibeis.AnnotMatch(qaid, qnid, daid_list, dnid_list, daid_dists, dnid_dists)
+
+
+if __name__ == '__main__':
+    r"""
+    CommandLine:
+        python -m ibeis_flukematch.plugin
+        python -m ibeis_flukematch.plugin --allexamples
+    """
+    import multiprocessing
+    multiprocessing.freeze_support()  # for win32
+    import utool as ut  # NOQA
+    ut.doctest_funcs()
