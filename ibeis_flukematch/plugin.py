@@ -1,4 +1,5 @@
-from __future__ import division, print_function
+# -*- coding: utf-8 -*-
+from __future__ import absolute_import, division, print_function, unicode_literals
 import ibeis
 import utool as ut
 import numpy as np
@@ -6,8 +7,9 @@ import cv2
 from os.path import join, exists
 import cPickle as pickle
 from collections import defaultdict
-from flukematch import (find_trailing_edge_cpp, block_integral_curvatures_cpp,
-                        get_distance_curvweighted,)
+from ibeis_flukematch.flukematch import (find_trailing_edge_cpp,
+                                         block_integral_curvatures_cpp,
+                                         get_distance_curvweighted,)
 
 ROOT = ibeis.const.ANNOTATION_TABLE
 
@@ -28,6 +30,12 @@ def debug_depcache(ibs):
     """
     print(ibs.depc)
     ibs.depc.show_digraph()
+    nas_notch_deps = ibs.depc.get_dependencies('Has_Notch')
+    print('nas_notch_deps = %r' % (nas_notch_deps,))
+    te_deps = ibs.depc.get_dependencies('Trailing_Edge')
+    print('te_deps = %r' % (te_deps,))
+    notch_tip_deps = ibs.depc.get_dependencies('Notch_Tips')
+    print('notch_tip_deps = %r' % (notch_tip_deps,))
     # from dtool import depends_cache
     # print(ut.repr3(depends_cache.__PREPROC_REGISTER__))
     # print(ut.repr3(depends_cache.__ALGO_REGISTER__))
@@ -165,7 +173,7 @@ def preproc_trailing_edge(depc_obj, aid_list, config={'n_neighbors': 5}):
     """
     ibs = depc_obj.controller
     # get the notch / left / right points
-    points = ibs.depc.get_property('Notch-Tips', aid_list)
+    points = ibs.depc.get_property('Notch_Tips', aid_list)
     # get the actual images
     image_paths = ibs.get_annot_image_paths(aid_list)
     # call flukematch.get_trailing_edge on each image
