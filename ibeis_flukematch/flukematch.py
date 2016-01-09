@@ -112,8 +112,9 @@ def block_integral_curvatures_cpp(sizes, coords):
     fit_size = (np.max(coords, axis=0) -
                 np.min(coords, axis=0)) + (max(sizes) + 1)
     binarized = np.zeros(fit_size[::-1], dtype=np.float32)
-    fixed_coords = np.ascontiguousarray(
+    fixed_coords = np.array(
         (coords - np.min(coords, axis=0)) + max(sizes) // 2)[:, ::-1]
+    fixed_coords = np.ascontiguousarray(fixed_coords)
     binarized[zip(*fixed_coords)] = 1
     binarized = binarized.cumsum(axis=0)
     binarized[np.where(binarized > 0)] = 1
@@ -122,16 +123,11 @@ def block_integral_curvatures_cpp(sizes, coords):
 
     #coords_flat = fixed_coords.flatten()
     #sat_flat = summed_table.flatten()
-    try:
-        for size in sizes:
-            # compute curvature using separate calls to block_curv for each
-            curvs[size] = np.zeros((fixed_coords.shape[0], 1), dtype=np.float32)
-            block_curv(summed_table, summed_table.shape[0], summed_table.shape[1],
-                       fixed_coords, fixed_coords.shape[0], size, curvs[size])
-    except ctypes.ArgumentError:
-        print('Error calling block_curve')
-        print('fixed_coords.flags = %r' % (fixed_coords.flags,))
-        raise
+    for size in sizes:
+        # compute curvature using separate calls to block_curv for each
+        curvs[size] = np.zeros((fixed_coords.shape[0], 1), dtype=np.float32)
+        block_curv(summed_table, summed_table.shape[0], summed_table.shape[1],
+                   fixed_coords, fixed_coords.shape[0], size, curvs[size])
     return curvs
 
 dtw_curvweighted = lib.dtw_curvweighted
