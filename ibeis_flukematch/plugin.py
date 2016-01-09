@@ -9,10 +9,31 @@ from collections import defaultdict
 from flukematch import (find_trailing_edge_cpp, block_integral_curvatures_cpp,
                         get_distance_curvweighted,)
 
+ROOT = ibeis.const.ANNOTATION_TABLE
+
 # register : name, parent(s), cols, dtypes
 
 
-@ibeis.register_preproc('has_notch_tips', ['annot'], ['exists'], [bool])
+def debug_depcache(ibs):
+    r"""
+    CommandLine:
+        python -m ibeis_flukematch.plugin --exec-debug_depcache --show
+
+    Example:
+        >>> # SCRIPT
+        >>> from ibeis_flukematch.plugin import *  # NOQA
+        >>> ibs = ibeis.opendb(defaultdb='PZ_MTEST')
+        >>> debug_depcache(ibs)
+        >>> ut.show_if_requested()
+    """
+    print(ibs.depc)
+    ibs.depc.show_digraph()
+    # from dtool import depends_cache
+    # print(ut.repr3(depends_cache.__PREPROC_REGISTER__))
+    # print(ut.repr3(depends_cache.__ALGO_REGISTER__))
+
+
+@ibeis.register_preproc('Has_Notch', [ROOT], ['flag'], [bool])
 def preproc_has_tips(depc_obj, aid_list, config={}):
     r"""
     HACK TO FIND ONLY ANNTS THAT HAVE TIPS
@@ -56,7 +77,7 @@ def preproc_has_tips(depc_obj, aid_list, config={}):
         yield (imgn in img_points_map,)
 
 
-@ibeis.register_preproc('Notch_Tips', ['annot'], ['notch', 'left', 'right'], [np.ndarray, np.ndarray, np.ndarray])
+@ibeis.register_preproc('Notch_Tips', [ROOT], ['notch', 'left', 'right'], [np.ndarray, np.ndarray, np.ndarray])
 def preproc_notch_tips(depc_obj, aid_list, config={}):
     r"""
     Args:
@@ -76,7 +97,7 @@ def preproc_notch_tips(depc_obj, aid_list, config={}):
         >>> from ibeis_flukematch.plugin import *  # NOQA
         >>> ibs = ibeis.opendb(defaultdb='humpbacks')
         >>> all_aids = ibs.get_valid_aids()
-        >>> isvalid = ibs.depc.get_property('has_notch_tips', all_aids, 'exists')
+        >>> isvalid = ibs.depc.get_property('Has_Notch', all_aids, 'flag')
         >>> aid_list = ut.compress(all_aids, isvalid)
         >>> config = {}
         >>> result = preproc_notch_tips(ibs.depc, aid_list, config)
