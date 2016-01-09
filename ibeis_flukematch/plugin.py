@@ -10,6 +10,7 @@ from collections import defaultdict
 from ibeis_flukematch.flukematch import (find_trailing_edge_cpp,
                                          block_integral_curvatures_cpp,
                                          get_distance_curvweighted,)
+(print, rrr, profile) = ut.inject2(__name__, '[flukeplug]')
 
 ROOT = ibeis.const.ANNOTATION_TABLE
 
@@ -42,7 +43,7 @@ def debug_depcache(ibs):
 
 
 @ibeis.register_preproc('Has_Notch', [ROOT], ['flag'], [bool])
-def preproc_has_tips(depc_obj, aid_list, config={}):
+def preproc_has_tips(depc_obj, aid_list, config=None):
     r"""
     HACK TO FIND ONLY ANNTS THAT HAVE TIPS
 
@@ -65,10 +66,16 @@ def preproc_has_tips(depc_obj, aid_list, config={}):
         >>> ibs = ibeis.opendb(defaultdb='humpbacks')
         >>> aid_list = ibs.get_valid_aids()
         >>> config = {}
-        >>> result = ut.take_column(preproc_has_tips(ibs.depc, aid_list, config), 0)
-        >>> hasnotch_list = list(result)
-        >>> print('%d / %d annots have notches' % (sum(hasnotch_list), len(aid_list)))
+        >>> propgen = preproc_has_tips(ibs.depc, aid_list, config)
+        >>> result = list(propgen)
+        >>> #print('result = %r' % (result,))
+        >>> hasnotch_list = ut.take_column(result, 0)
+        >>> num_with = sum(hasnotch_list)
+        >>> print('%r / %r annots have notches' % (num_with, len(aid_list)))
     """
+    if config is None:
+        config = {}
+    config = config.copy()
     ibs = depc_obj.controller
     fn = join(ibs.get_dbdir(), 'fluke_image_points.pkl')
     if not exists(fn):
@@ -82,12 +89,21 @@ def preproc_has_tips(depc_obj, aid_list, config={}):
 
     img_names = ibs.get_annot_image_names(aid_list)
 
-    for imgn in ut.ProgIter(img_names, lbl='Checking Notches'):
-        yield (imgn in img_points_map,)
+    for imgn in ut.ProgIter(img_names, lbl='Checking Has_Notch'):
+        try:
+            (img_points_map[imgn]['notch'], img_points_map[imgn]['left'],
+             img_points_map[imgn]['right'],)
+        except KeyError:
+            yield (False,)
+        else:
+            yield (True,)
+
+
+DEFAULT_NTIP_CONFIG = {}
 
 
 @ibeis.register_preproc('Notch_Tips', [ROOT], ['notch', 'left', 'right'], [np.ndarray, np.ndarray, np.ndarray])
-def preproc_notch_tips(depc_obj, aid_list, config={}):
+def preproc_notch_tips(depc_obj, aid_list, config=None):
     r"""
     Args:
         depc_obj (DependencyCache):
@@ -114,6 +130,10 @@ def preproc_notch_tips(depc_obj, aid_list, config={}):
         >>> #print(len(filter(lambda x: x is not None, result)))
         >>> print('depth_profile(notch_tips) = %r' % (ut.depth_profile(result),))
     """
+    if config is None:
+        config = DEFAULT_NTIP_CONFIG
+    config = config.copy()
+
     ibs = depc_obj.controller
     # TODO: Implement manual annotation options
     # HACK: Read in a file that associates image names w/these annotations, and
@@ -131,20 +151,26 @@ def preproc_notch_tips(depc_obj, aid_list, config={}):
         img_points_map = pickle.load(f)
 
     img_names = ibs.get_annot_image_names(aid_list)
-    for imgn in ut.ProgIter(img_names, lbl='Reading Notches'):
+    for aid, imgn in ut.ProgIter(zip(aid_list, img_names), lbl='Reading Notch_Tips'):
         try:
             yield (img_points_map[imgn]['notch'],
                    img_points_map[imgn]['left'],
                    img_points_map[imgn]['right'],)
         except KeyError:
             print(
-                "[fluke-module] ERROR: aid given that does not have points associated")
-            yield None
-            #raise NotImplementedError
+                "[fluke-module] ERROR: aid=%r does not have points associated" % (aid,))
+            # yield None
+            raise NotImplementedError("ERROR: aid=%r does not have points associated" % (aid,))
 
 
-@ibeis.register_preproc('Trailing_Edge', ['Notch_Tips'], ['edge', 'cost'], [np.ndarray, float])
-def preproc_trailing_edge(depc_obj, aid_list, config={'n_neighbors': 5}):
+# Technically ROOT should be 'Notch_Tips', but this will hack it to work
+# for now
+
+DEFAULT_TE_CONFIG = {'n_neighbors': 5}
+
+
+@ibeis.register_preproc('Trailing_Edge', [ROOT], ['edge', 'cost'], [np.ndarray, float])
+def preproc_trailing_edge(depc_obj, aid_list, config=None):
     r"""
     Args:
         depc_obj (DependencyCache):
@@ -164,15 +190,22 @@ def preproc_trailing_edge(depc_obj, aid_list, config={'n_neighbors': 5}):
         >>> ibs = ibeis.opendb(defaultdb='humpbacks')
         >>> all_aids = ibs.get_valid_aids()
         >>> isvalid = ibs.depc.get_property('Has_Notch', all_aids, 'flag')
-        >>> aid_list = ut.compress(all_aids, isvalid)
+        >>> aid_list = ut.compress(all_aids, isvalid)[0:10]
+        >>> print('aid_list = %r' % (aid_list,))
         >>> depc_obj = ibs.depc
         >>> config = {'n_neighbors': 5}
-        >>> (tedge, cost) = preproc_trailing_edge(depc_obj, aid_list, config)
-        >>> print('tedge = %r' % (tedge,))
-        >>> print('cost = %r' % (cost,))
+        >>> propgen = preproc_trailing_edge(depc_obj, aid_list, config)
+        >>> results = list(propgen)
+        >>> tedge_list, cost_list = list(zip(*results))
+        >>> print('tedge_list = %r' % (tedge_list,))
+        >>> print('cost_list = %r' % (cost_list,))
     """
+    if config is None:
+        config = DEFAULT_TE_CONFIG
+    config = config.copy()
     ibs = depc_obj.controller
     # get the notch / left / right points
+    print('[preproc_te] aid_list = %r' % (ut.truncate_str(repr(aid_list), 50),))
     points = ibs.depc.get_property('Notch_Tips', aid_list)
     # get the actual images
     image_paths = ibs.get_annot_image_paths(aid_list)
@@ -183,7 +216,9 @@ def preproc_trailing_edge(depc_obj, aid_list, config={'n_neighbors': 5}):
         print("[fluke-module] WARNING: Number of neighbors for trailing edge"
               "extraction not provided, defaulting to 5")
         n_neighbors = 5
-    for imagen, point_set in zip(image_paths, points):
+    _iter = zip(image_paths, points)
+    progiter = ut.ProgIter(_iter, lbl='compute Trailing_Edge')
+    for imagen, point_set in progiter:
         img = cv2.imread(imagen)
         img_grey = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         tedge, cost = find_trailing_edge_cpp(img_grey, point_set[1],
@@ -193,7 +228,7 @@ def preproc_trailing_edge(depc_obj, aid_list, config={'n_neighbors': 5}):
 
 
 @ibeis.register_preproc('Block_Curvature', ['Trailing_Edge'], ['curvature'], [np.ndarray])
-def preproc_block_curvature(depc_obj, aid_list, config={'sizes': [5, 10, 15, 20]}):
+def preproc_block_curvature(depc_obj, te_rowids, config={'sizes': [5, 10, 15, 20]}):
     r"""
     Args:
         depc_obj (DependencyCache):
@@ -204,7 +239,7 @@ def preproc_block_curvature(depc_obj, aid_list, config={'sizes': [5, 10, 15, 20]
         list: [np.ndarray]
 
     CommandLine:
-        python -m ibeis_flukematch.plugin --exec-preproc_block_curvature --show
+        python -m ibeis_flukematch.plugin --exec-preproc_block_curvature --dbdir /home/zach/data/IBEIS/humpbacks --no-cnn
 
     Example:
         >>> # DISABLE_DOCTEST
@@ -212,15 +247,23 @@ def preproc_block_curvature(depc_obj, aid_list, config={'sizes': [5, 10, 15, 20]
         >>> ibs = ibeis.opendb(defaultdb='humpbacks')
         >>> all_aids = ibs.get_valid_aids()
         >>> isvalid = ibs.depc.get_property('Has_Notch', all_aids, 'flag')
-        >>> aid_list = ut.compress(all_aids, isvalid)
+        >>> aid_list = ut.compress(all_aids, isvalid)[0:10]
+        >>> print('\n!!![test] aid_list = %r' % (aid_list,))
         >>> depc_obj = ibs.depc
         >>> config = {'sizes': [5, 10, 15, 20]}
-        >>> result = preproc_block_curvature(depc_obj, aid_list, config)
+        >>> te_rowids = depc_obj.get_rowids('Trailing_Edge', aid_list, config)
+        >>> print('te_rowids = %r' % (te_rowids,))
+        >>> propgen = preproc_block_curvature(depc_obj, te_rowids, config)
+        >>> result = list(propgen)
         >>> print(result)
     """
+    print('Computing block curvature')
     ibs = depc_obj.controller
+    # NOTE: Need to use get_native_property because the take the type
+    # of the parent (trailing ege) ids, not the root (annot) ids.
     # get the trailing edges
-    tedges, _ = zip(*ibs.depc.get_property('Trailing_Edge', aid_list))
+    # NOTE: Can specify a single column, so unpacking is done automatically
+    tedges = ibs.depc.get_native_property('Trailing_Edge', te_rowids, 'edge')
     try:
         sizes = config['sizes']
     except KeyError:
@@ -229,8 +272,10 @@ def preproc_block_curvature(depc_obj, aid_list, config={'sizes': [5, 10, 15, 20]
                "not provided, defaulting to %r ") % (sizes,))
 
     # call flukematch.block_integral_curvatures_cpp
-    for tedge in tedges:
-        yield block_integral_curvatures_cpp(tedge, sizes)
+    progiter = ut.ProgIter(tedges, lbl='compute Block_Curvature')
+    for tedge in progiter:
+        curve_arr = block_integral_curvatures_cpp(sizes, tedge)
+        yield (curve_arr,)
 
 
 DEFAULT_ALGO_CONFIG = {
@@ -242,7 +287,7 @@ DEFAULT_ALGO_CONFIG = {
 }
 
 
-@ibeis.register_algo('BC_DTW', ['Block_Curvature'], ['bcdtwmatch'], [ibeis.AnnotMatch.load_from_fpath])
+@ibeis.register_algo('BC_DTW', [ROOT], ['bcdtwmatch'], [ibeis.AnnotMatch.load_from_fpath])
 def id_algo_bc_dtw(depc_obj, qaid_list, config=None):
     r"""
     Args:

@@ -94,9 +94,9 @@ def find_trailing_edge_cpp(img, start, end, center, n_neighbors=5):
     gradient_y_image[center[1], center[0]] = 0
 
     outpath = np.zeros((end[0] - start[0], 2), dtype=np.int32)
-    cost = find_trailing_edge_cpp(gradient_y_image, gradient_y_image.shape[0],
-                                  gradient_y_image.shape[1], start[0], end[1],
-                                  end[0], n_neighbors, outpath)
+    cost = find_te(gradient_y_image, gradient_y_image.shape[0],
+                   gradient_y_image.shape[1], start[0], end[1], end[0],
+                   n_neighbors, outpath)
     return outpath, cost
 
 block_curv = lib.block_curvature
