@@ -49,6 +49,7 @@ def preproc_has_tips(depc_obj, aid_list, config={}):
     CommandLine:
         python -m ibeis_flukematch.plugin --exec-preproc_has_tips --db testdb1
         python -m ibeis_flukematch.plugin --exec-preproc_has_tips --dbdir /home/zach/data/IBEIS/humpbacks --no-cnn
+        python -m ibeis_flukematch.plugin --exec-preproc_has_tips --dbdir /home/zach/data/IBEIS/humpbacks --no-cnn --clear-all-depcache
 
     Example:
         >>> # DISABLE_DOCTEST
@@ -102,7 +103,8 @@ def preproc_notch_tips(depc_obj, aid_list, config={}):
         >>> config = {}
         >>> result = preproc_notch_tips(ibs.depc, aid_list, config)
         >>> result = list(result)
-        >>> print(len(filter(lambda x: x is not None, result)))
+        >>> #print(len(filter(lambda x: x is not None, result)))
+        >>> print('depth_profile(notch_tips) = ' + ut.depth_profile(result))
     """
     ibs = depc_obj.controller
     # TODO: Implement manual annotation options
@@ -146,14 +148,20 @@ def preproc_trailing_edge(depc_obj, aid_list, config={'n_neighbors': 5}):
 
     CommandLine:
         python -m ibeis_flukematch.plugin --exec-preproc_trailing_edge --show
+        python -m ibeis_flukematch.plugin --exec-preproc_trailing_edge --dbdir /home/zach/data/IBEIS/humpbacks --no-cnn
 
     Example:
         >>> # DISABLE_DOCTEST
         >>> from ibeis_flukematch.plugin import *  # NOQA
-        >>> depc_obj = '?'
-        >>> aid_list = ibs.get_valid_aids()
+        >>> ibs = ibeis.opendb(defaultdb='humpbacks')
+        >>> all_aids = ibs.get_valid_aids()
+        >>> isvalid = ibs.depc.get_property('Has_Notch', all_aids, 'flag')
+        >>> aid_list = ut.compress(all_aids, isvalid)
+        >>> depc_obj = ibeis.depc
         >>> config = {'n_neighbors': 5}
         >>> (tedge, cost) = preproc_trailing_edge(depc_obj, aid_list, config)
+        >>> print('tedge = %r' % (tedge,))
+        >>> print('cost = %r' % (cost,))
     """
     ibs = depc_obj.controller
     # get the notch / left / right points
@@ -193,10 +201,14 @@ def preproc_block_curvature(depc_obj, aid_list, config={'sizes': [5, 10, 15, 20]
     Example:
         >>> # DISABLE_DOCTEST
         >>> from ibeis_flukematch.plugin import *  # NOQA
-        >>> depc_obj = '?'
-        >>> aid_list = ibs.get_valid_aids()
+        >>> ibs = ibeis.opendb(defaultdb='humpbacks')
+        >>> all_aids = ibs.get_valid_aids()
+        >>> isvalid = ibs.depc.get_property('Has_Notch', all_aids, 'flag')
+        >>> aid_list = ut.compress(all_aids, isvalid)
+        >>> depc_obj = ibeis.depc
         >>> config = {'sizes': [5, 10, 15, 20]}
         >>> result = preproc_block_curvature(depc_obj, aid_list, config)
+        >>> print(result)
     """
     ibs = depc_obj.controller
     # get the trailing edges
@@ -241,15 +253,18 @@ def id_algo_bc_dtw(depc_obj, qaid_list, config=None):
     Example:
         >>> # DISABLE_DOCTEST
         >>> from ibeis_flukematch.plugin import *  # NOQA
-        >>> depc_obj = '?'
-        >>> qaid_list = '?'
-        >>> config = {'weights': None, 'decision': np.average, 'daid_list': None,
+        >>> from ibeis_flukematch.plugin import *  # NOQA
+        >>> ibs = ibeis.opendb(defaultdb='humpbacks')
+        >>> all_aids = ibs.get_valid_aids()
+        >>> isvalid = ibs.depc.get_property('Has_Notch', all_aids, 'flag')
+        >>> aid_list = ut.compress(all_aids, isvalid)
+        >>> depc_obj = ibeis.depc
+        >>> qaid_list = aid_list
+        >>> daid_list = aid_list
+        >>> config = {'weights': None, 'decision': np.average, 'daid_list': daid_list,
         >>>           'verbose': False, 'sizes': [5, 10, 15, 20]}
         >>> result = id_algo_bc_dtw(depc_obj, qaid_list, config)
         >>> print(result)
-        >>> ut.quit_if_noshow()
-        >>> import plottool as pt
-        >>> ut.show_if_requested()
     """
     if config is None:
         config = DEFAULT_ALGO_CONFIG
