@@ -122,11 +122,16 @@ def block_integral_curvatures_cpp(sizes, coords):
 
     #coords_flat = fixed_coords.flatten()
     #sat_flat = summed_table.flatten()
-    for size in sizes:
-        # compute curvature using separate calls to block_curv for each
-        curvs[size] = np.zeros((fixed_coords.shape[0], 1), dtype=np.float32)
-        block_curv(summed_table, summed_table.shape[0], summed_table.shape[1],
-                   fixed_coords, fixed_coords.shape[0], size, curvs[size])
+    try:
+        for size in sizes:
+            # compute curvature using separate calls to block_curv for each
+            curvs[size] = np.zeros((fixed_coords.shape[0], 1), dtype=np.float32)
+            block_curv(summed_table, summed_table.shape[0], summed_table.shape[1],
+                       fixed_coords, fixed_coords.shape[0], size, curvs[size])
+    except ctypes.ArgumentError:
+        print('Error calling block_curve')
+        print('fixed_coords.flags = %r' % (fixed_coords.flags,))
+        raise
     return curvs
 
 dtw_curvweighted = lib.dtw_curvweighted
