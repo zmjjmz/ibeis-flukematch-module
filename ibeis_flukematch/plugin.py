@@ -12,6 +12,49 @@ from flukematch import (find_trailing_edge_cpp, block_integral_curvatures_cpp,
 # register : name, parent(s), cols, dtypes
 
 
+@ibeis.register_preproc('has_notch_tips', ['annot'], ['exists'], [bool])
+def preproc_has_tips(depc_obj, aid_list, config={}):
+    r"""
+    HACK TO FIND ONLY ANNTS THAT HAVE TIPS
+
+    Args:
+        depc_obj (DependencyCache):
+        aid_list (list):  list of annotation rowids
+        config (dict): (default = {})
+
+    Yields:
+        tuple: (np.ndarray, np.ndarray, np.ndarray)
+
+    CommandLine:
+        python -m ibeis_flukematch.plugin --exec-preproc_has_tips --db testdb1
+
+    Example:
+        >>> # DISABLE_DOCTEST
+        >>> from ibeis_flukematch.plugin import *  # NOQA
+        >>> ibs = ibeis.opendb(defaultdb='humpbacks')
+        >>> aid_list = ibs.get_valid_aids()
+        >>> config = {}
+        >>> result = preproc_has_tips(ibs.depc, aid_list, config)
+        >>> result = list(result)
+        >>> print(len(filter(lambda x: x is not None, result)))
+    """
+    ibs = depc_obj.controller
+    fn = join(ibs.get_dbdir(), 'fluke_image_points.pkl')
+    if not exists(fn):
+        print("[fluke-module] ERROR: Could not find image points file")
+        raise NotImplementedError('Could not find image points file')
+
+    with open(fn, 'r') as f:
+        # this is a dict of img: dict of left/right/notch to the corresponding
+        # point
+        img_points_map = pickle.load(f)
+
+    img_names = ibs.get_annot_image_names(aid_list)
+
+    for imgn in ut.ProgIter(img_names, lbl='Checking Notches'):
+        yield (imgn in img_points_map,)
+
+
 @ibeis.register_preproc('Notch_Tips', ['annot'], ['notch', 'left', 'right'], [np.ndarray, np.ndarray, np.ndarray])
 def preproc_notch_tips(depc_obj, aid_list, config={}):
     r"""
@@ -38,13 +81,14 @@ def preproc_notch_tips(depc_obj, aid_list, config={}):
     """
     ibs = depc_obj.controller
     # TODO: Implement manual annotation options
-    # HACK: Read in a file that associates image names w/these annotations, and try to associate these w/the image names
+    # HACK: Read in a file that associates image names w/these annotations, and
+    #   try to associate these w/the image names
     # HACK: hardcode this filename relative to the IBEIS directory
 
     fn = join(ibs.get_dbdir(), 'fluke_image_points.pkl')
     if not exists(fn):
         print("[fluke-module] ERROR: Could not find image points file")
-        raise NotImplementedError
+        raise NotImplementedError('Could not find image points file')
 
     with open(fn, 'r') as f:
         # this is a dict of img: dict of left/right/notch to the corresponding
@@ -52,7 +96,7 @@ def preproc_notch_tips(depc_obj, aid_list, config={}):
         img_points_map = pickle.load(f)
 
     img_names = ibs.get_annot_image_names(aid_list)
-    for imgn in ut.ProgIter(img_names):
+    for imgn in ut.ProgIter(img_names, lbl='Reading Notches'):
         try:
             yield (img_points_map[imgn]['notch'],
                    img_points_map[imgn]['left'],
@@ -95,13 +139,15 @@ def preproc_trailing_edge(depc_obj, aid_list, config={'n_neighbors': 5}):
     try:
         n_neighbors = config['n_neighbors']
     except KeyError:
-        print("[fluke-module] WARNING: Number of neighbors for trailing edge extraction not provided, defaulting to 5")
+        print("[fluke-module] WARNING: Number of neighbors for trailing edge"
+              "extraction not provided, defaulting to 5")
         n_neighbors = 5
     for imagen, point_set in zip(image_paths, points):
         img = cv2.imread(imagen)
         img_grey = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        tedge, cost = find_trailing_edge_cpp(img_grey, point_set[1], point_set[
-                                             2], point_set[0], n_neighbors=n_neighbors)
+        tedge, cost = find_trailing_edge_cpp(img_grey, point_set[1],
+                                             point_set[2], point_set[0],
+                                             n_neighbors=n_neighbors)
         yield (tedge, cost)
 
 
@@ -133,16 +179,26 @@ def preproc_block_curvature(depc_obj, aid_list, config={'sizes': [5, 10, 15, 20]
     try:
         sizes = config['sizes']
     except KeyError:
-        print("[fluke-module] WARNING: Sizes for block curvature extraction not provided, defaulting to [5, 10, 15, 20]")
         sizes = [5, 10, 15, 20]
+        print(("[fluke-module] WARNING: Sizes for block curvature extraction"
+               "not provided, defaulting to %r ") % (sizes,))
 
     # call flukematch.block_integral_curvatures_cpp
     for tedge in tedges:
         yield block_integral_curvatures_cpp(tedge, sizes)
 
 
-@ibeis.register_id_algo('BC_DTW', ['Block_Curvature'], ['bcdtwmatch'], [ibeis.AnnotMatch.load_from_fpath])
-def id_algo_bc_dtw(depc_obj, qaid_list, config={'verbose': False, 'daid_list': None, 'decision': np.average, 'sizes': [5, 10, 15, 20], 'weights': None}):
+DEFAULT_ALGO_CONFIG = {
+    'verbose': False,
+    'daid_list': None,
+    'decision': np.average,
+    'sizes': [5, 10, 15, 20],
+    'weights': None
+}
+
+
+@ibeis.register_algo('BC_DTW', ['Block_Curvature'], ['bcdtwmatch'], [ibeis.AnnotMatch.load_from_fpath])
+def id_algo_bc_dtw(depc_obj, qaid_list, config=None):
     r"""
     Args:
         depc_obj (DependencyCache):
@@ -170,6 +226,9 @@ def id_algo_bc_dtw(depc_obj, qaid_list, config={'verbose': False, 'daid_list': N
         >>> import plottool as pt
         >>> ut.show_if_requested()
     """
+    if config is None:
+        config = DEFAULT_ALGO_CONFIG
+
     assert(config['daid_list'] is not None)
     weights = config['weights']
     sizes = config['sizes']
@@ -189,8 +248,12 @@ def id_algo_bc_dtw(depc_obj, qaid_list, config={'verbose': False, 'daid_list': N
     qnid_list = ibs.get_annot_nids(qaid_list)
     dnid_list = ibs.get_annot_nids(daid_list)
 
-    for query_curv, qaid, qnid in ut.ProgressIter(zip(query_curvs, qaid_list, qnid_list), lbl='QueryAID', enabled=config['verbose']):
-        dists_by_nid = defaultdict(lambda: [])
+    _iter = zip(query_curvs, qaid_list, qnid_list)
+    _progiter = ut.ProgressIter(_iter, lbl='QueryAID',
+                                enabled=config['verbose'])
+
+    for query_curv, qaid, qnid in _progiter:
+        dists_by_nid = defaultdict(list)
         daid_dists = []
         for db_curv, daid, dnid in zip(db_curvs, daid_list, dnid_list):
             distance = get_distance_curvweighted(query_curv, db_curv, weights)
