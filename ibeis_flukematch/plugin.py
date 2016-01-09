@@ -104,7 +104,7 @@ def preproc_notch_tips(depc_obj, aid_list, config={}):
         >>> result = preproc_notch_tips(ibs.depc, aid_list, config)
         >>> result = list(result)
         >>> #print(len(filter(lambda x: x is not None, result)))
-        >>> print('depth_profile(notch_tips) = ' + ut.depth_profile(result))
+        >>> print('depth_profile(notch_tips) = %r' % (ut.depth_profile(result),))
     """
     ibs = depc_obj.controller
     # TODO: Implement manual annotation options
@@ -157,7 +157,7 @@ def preproc_trailing_edge(depc_obj, aid_list, config={'n_neighbors': 5}):
         >>> all_aids = ibs.get_valid_aids()
         >>> isvalid = ibs.depc.get_property('Has_Notch', all_aids, 'flag')
         >>> aid_list = ut.compress(all_aids, isvalid)
-        >>> depc_obj = ibeis.depc
+        >>> depc_obj = ibs.depc
         >>> config = {'n_neighbors': 5}
         >>> (tedge, cost) = preproc_trailing_edge(depc_obj, aid_list, config)
         >>> print('tedge = %r' % (tedge,))
@@ -205,7 +205,7 @@ def preproc_block_curvature(depc_obj, aid_list, config={'sizes': [5, 10, 15, 20]
         >>> all_aids = ibs.get_valid_aids()
         >>> isvalid = ibs.depc.get_property('Has_Notch', all_aids, 'flag')
         >>> aid_list = ut.compress(all_aids, isvalid)
-        >>> depc_obj = ibeis.depc
+        >>> depc_obj = ibs.depc
         >>> config = {'sizes': [5, 10, 15, 20]}
         >>> result = preproc_block_curvature(depc_obj, aid_list, config)
         >>> print(result)
@@ -258,7 +258,7 @@ def id_algo_bc_dtw(depc_obj, qaid_list, config=None):
         >>> all_aids = ibs.get_valid_aids()
         >>> isvalid = ibs.depc.get_property('Has_Notch', all_aids, 'flag')
         >>> aid_list = ut.compress(all_aids, isvalid)
-        >>> depc_obj = ibeis.depc
+        >>> depc_obj = ibs.depc
         >>> qaid_list = aid_list
         >>> daid_list = aid_list
         >>> config = {'weights': None, 'decision': np.average, 'daid_list': daid_list,
