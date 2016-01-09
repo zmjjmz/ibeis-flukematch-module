@@ -27,6 +27,7 @@ def preproc_has_tips(depc_obj, aid_list, config={}):
 
     CommandLine:
         python -m ibeis_flukematch.plugin --exec-preproc_has_tips --db testdb1
+        python -m ibeis_flukematch.plugin --exec-preproc_has_tips --dbdir /home/zach/data/IBEIS/humpbacks --no-cnn
 
     Example:
         >>> # DISABLE_DOCTEST
@@ -35,8 +36,8 @@ def preproc_has_tips(depc_obj, aid_list, config={}):
         >>> aid_list = ibs.get_valid_aids()
         >>> config = {}
         >>> result = preproc_has_tips(ibs.depc, aid_list, config)
-        >>> result = list(result)
-        >>> print(len(filter(lambda x: x is not None, result)))
+        >>> hasnotch_list = list(result)
+        >>> print('%d annots have notches' % (sum(hasnotch_list)))
     """
     ibs = depc_obj.controller
     fn = join(ibs.get_dbdir(), 'fluke_image_points.pkl')
@@ -68,12 +69,15 @@ def preproc_notch_tips(depc_obj, aid_list, config={}):
 
     CommandLine:
         python -m ibeis_flukematch.plugin --exec-preproc_notch_tips
+        python -m ibeis_flukematch.plugin --exec-preproc_notch_tips --dbdir /home/zach/data/IBEIS/humpbacks --no-cnn
 
     Example:
         >>> # DISABLE_DOCTEST
         >>> from ibeis_flukematch.plugin import *  # NOQA
         >>> ibs = ibeis.opendb('humpbacks')
-        >>> aid_list = ibs.get_valid_aids()
+        >>> all_aids = ibs.get_valid_aids()
+        >>> isvalid = ibs.depc.get_property('has_notch_tips', all_aids, 'exists')
+        >>> aid_list = ut.compress(all_aids, isvalid)
         >>> config = {}
         >>> result = preproc_notch_tips(ibs.depc, aid_list, config)
         >>> result = list(result)
