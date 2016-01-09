@@ -17,6 +17,10 @@ ROOT = ibeis.const.ANNOTATION_TABLE
 # register : name, parent(s), cols, dtypes
 
 
+def trunc_repr(obj):
+    return ut.truncate_str(repr(obj), 50, truncmsg='~//~')
+
+
 def debug_depcache(ibs):
     r"""
     CommandLine:
@@ -30,13 +34,13 @@ def debug_depcache(ibs):
         >>> ut.show_if_requested()
     """
     print(ibs.depc)
-    ibs.depc.show_digraph()
     nas_notch_deps = ibs.depc.get_dependencies('Has_Notch')
     print('nas_notch_deps = %r' % (nas_notch_deps,))
     te_deps = ibs.depc.get_dependencies('Trailing_Edge')
     print('te_deps = %r' % (te_deps,))
     notch_tip_deps = ibs.depc.get_dependencies('Notch_Tips')
     print('notch_tip_deps = %r' % (notch_tip_deps,))
+    ibs.depc.show_digraph()
     # from dtool import depends_cache
     # print(ut.repr3(depends_cache.__PREPROC_REGISTER__))
     # print(ut.repr3(depends_cache.__ALGO_REGISTER__))
@@ -169,8 +173,8 @@ def preproc_notch_tips(depc_obj, aid_list, config=None):
 DEFAULT_TE_CONFIG = {'n_neighbors': 5}
 
 
-@ibeis.register_preproc('Trailing_Edge', [ROOT], ['edge', 'cost'], [np.ndarray, float])
-def preproc_trailing_edge(depc_obj, aid_list, config=None):
+@ibeis.register_preproc('Trailing_Edge', [ROOT, 'Notch_Tips'], ['edge', 'cost'], [np.ndarray, float])
+def preproc_trailing_edge(depc_obj, aid_list, ntid_list, config=None):
     r"""
     Args:
         depc_obj (DependencyCache):
@@ -183,6 +187,7 @@ def preproc_trailing_edge(depc_obj, aid_list, config=None):
     CommandLine:
         python -m ibeis_flukematch.plugin --exec-preproc_trailing_edge --show
         python -m ibeis_flukematch.plugin --exec-preproc_trailing_edge --dbdir /home/zach/data/IBEIS/humpbacks --no-cnn
+        python -m ibeis_flukematch.plugin --exec-preproc_trailing_edge --dbdir /home/zach/data/IBEIS/humpbacks --no-cnn --clear-all-depcache
 
     Example:
         >>> # DISABLE_DOCTEST
@@ -194,7 +199,9 @@ def preproc_trailing_edge(depc_obj, aid_list, config=None):
         >>> print('aid_list = %r' % (aid_list,))
         >>> depc_obj = ibs.depc
         >>> config = {'n_neighbors': 5}
-        >>> propgen = preproc_trailing_edge(depc_obj, aid_list, config)
+        >>> ntid_list = ibs.depc.get_rowids('Notch_Tips', aid_list)
+        >>> print('ntid_list = %r' % (ntid_list,))
+        >>> propgen = preproc_trailing_edge(depc_obj, aid_list, ntid_list, config)
         >>> results = list(propgen)
         >>> tedge_list, cost_list = list(zip(*results))
         >>> print('tedge_list = %r' % (tedge_list,))
@@ -205,8 +212,9 @@ def preproc_trailing_edge(depc_obj, aid_list, config=None):
     config = config.copy()
     ibs = depc_obj.controller
     # get the notch / left / right points
-    print('[preproc_te] aid_list = %r' % (ut.truncate_str(repr(aid_list), 50),))
-    points = ibs.depc.get_property('Notch_Tips', aid_list)
+    print('[preproc_te] aid_list = %r' % (trunc_repr(aid_list),))
+    # points = ibs.depc.get_property('Notch_Tips', aid_list)
+    points = ibs.depc.get_native_property('Notch_Tips', ntid_list)
     # get the actual images
     image_paths = ibs.get_annot_image_paths(aid_list)
     # call flukematch.get_trailing_edge on each image
