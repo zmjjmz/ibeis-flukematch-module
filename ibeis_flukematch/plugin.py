@@ -24,7 +24,7 @@ def trunc_repr(obj):
 def debug_depcache(ibs):
     r"""
     CommandLine:
-        python -m ibeis_flukematch.plugin --exec-debug_depcache --show
+        python -m ibeis_flukematch.plugin --exec-debug_depcache --show --no-cnn
 
     Example:
         >>> # SCRIPT
@@ -40,7 +40,10 @@ def debug_depcache(ibs):
     print('te_deps = %r' % (te_deps,))
     notch_tip_deps = ibs.depc.get_dependencies('Notch_Tips')
     print('notch_tip_deps = %r' % (notch_tip_deps,))
-    ibs.depc.show_digraph()
+    try:
+        ibs.depc.show_digraph()
+    except Exception as ex:
+        ut.printex(ex, iswarning=True)
     # from dtool import depends_cache
     # print(ut.repr3(depends_cache.__PREPROC_REGISTER__))
     # print(ut.repr3(depends_cache.__ALGO_REGISTER__))
@@ -294,8 +297,20 @@ DEFAULT_ALGO_CONFIG = {
     'weights': None
 }
 
+import dtool
 
-@ibeis.register_algo('BC_DTW', [ROOT], ['bcdtwmatch'], [ibeis.AnnotMatch.load_from_fpath])
+class TempAnnotMatch(dtool.AlgoResult):
+    def __init__(self, qaid=None, daids=None, dnid_list=None,
+                 annot_score_list=None, unique_nids=None,
+                 name_score_list=None):
+        self.qaid = qaid
+        self.daids = daids
+        self.dnid_list = dnid_list
+        self.annot_score_list = annot_score_list
+        self.name_score_list = name_score_list
+
+
+@ibeis.register_algo('BC_DTW', algo_result_class=TempAnnotMatch)
 def id_algo_bc_dtw(depc_obj, qaid_list, config=None):
     r"""
     Args:

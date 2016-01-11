@@ -65,16 +65,24 @@ def find_trailing_edge(img, start, end, center=None, n_neighbors=3):
     return path, path_cost, cost
 
 
-from os.path import dirname, join
-lib = ctypes.cdll.LoadLibrary(join(dirname(__file__), 'flukematch_lib.so'))
+try:
+    from os.path import dirname, join
+    lib = ctypes.cdll.LoadLibrary(join(dirname(__file__), 'flukematch_lib.so'))
+    HAS_LIB = True
+except Exception as ex:
+    import utool as ut
+    ut.printex(ex, iswarning=True)
+    HAS_LIB = False
 
-ndmat_f_type = np.ctypeslib.ndpointer(dtype=np.float32, ndim=2, flags='C_CONTIGUOUS')
-ndmat_i_type = np.ctypeslib.ndpointer(dtype=np.int32, ndim=2, flags='C_CONTIGUOUS')
 
-find_te = lib.find_trailing_edge
-find_te.argtypes = [ndmat_f_type, ctypes.c_int, ctypes.c_int,  # image and size info
-                    ctypes.c_int, ctypes.c_int, ctypes.c_int,  # startcol, endrow, endcol
-                    ctypes.c_int, ndmat_i_type]  # number of neighbors, output path
+if HAS_LIB:
+    ndmat_f_type = np.ctypeslib.ndpointer(dtype=np.float32, ndim=2, flags='C_CONTIGUOUS')
+    ndmat_i_type = np.ctypeslib.ndpointer(dtype=np.int32, ndim=2, flags='C_CONTIGUOUS')
+
+    find_te = lib.find_trailing_edge
+    find_te.argtypes = [ndmat_f_type, ctypes.c_int, ctypes.c_int,  # image and size info
+                        ctypes.c_int, ctypes.c_int, ctypes.c_int,  # startcol, endrow, endcol
+                        ctypes.c_int, ndmat_i_type]  # number of neighbors, output path
 
 
 def find_trailing_edge_cpp(img, start, end, center, n_neighbors=5):
@@ -99,11 +107,12 @@ def find_trailing_edge_cpp(img, start, end, center, n_neighbors=5):
                    n_neighbors, outpath)
     return outpath, cost
 
-block_curv = lib.block_curvature
-block_curv.argtypes = [ndmat_f_type,  # summed_area_table,
-                       ctypes.c_int, ctypes.c_int,  # summed_area_table shape
-                       ndmat_i_type, ctypes.c_int,  # trailing edge and length
-                       ctypes.c_int, ndmat_f_type, ]  # size, output
+if HAS_LIB:
+    block_curv = lib.block_curvature
+    block_curv.argtypes = [ndmat_f_type,  # summed_area_table,
+                           ctypes.c_int, ctypes.c_int,  # summed_area_table shape
+                           ndmat_i_type, ctypes.c_int,  # trailing edge and length
+                           ctypes.c_int, ndmat_f_type, ]  # size, output
 
 
 def block_integral_curvatures_cpp(sizes, coords):
@@ -130,11 +139,12 @@ def block_integral_curvatures_cpp(sizes, coords):
                    fixed_coords, fixed_coords.shape[0], size, curvs[size])
     return curvs
 
-dtw_curvweighted = lib.dtw_curvweighted
-dtw_curvweighted.argtypes = [ndmat_f_type, ndmat_f_type,  # curvatures
-                             ctypes.c_int, ctypes.c_int,  # lengths
-                             ctypes.c_int, ctypes.c_int,  # window, number of sizes
-                             ndmat_f_type, ndmat_f_type]  # weights, output
+if HAS_LIB:
+    dtw_curvweighted = lib.dtw_curvweighted
+    dtw_curvweighted.argtypes = [ndmat_f_type, ndmat_f_type,  # curvatures
+                                 ctypes.c_int, ctypes.c_int,  # lengths
+                                 ctypes.c_int, ctypes.c_int,  # window, number of sizes
+                                 ndmat_f_type, ndmat_f_type]  # weights, output
 
 
 def get_distance_curvweighted(query_curv, db_curv, curv_weights, window=50):
