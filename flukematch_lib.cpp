@@ -78,7 +78,7 @@ float get_te_cost(int row, int col, int i, const MatrixXf & cost, const ExternND
     if ((row + i < 0) || (row + i >= cost.rows()) || (col == 0)) {
         return INFINITY;
     } else {
-        return cost(row+i, col-1) + gradient_img(row, col);
+        return (col == 0 ? 0 : cost(row+i, col-1)) + gradient_img(row, col);
     }
 }
 
