@@ -2,12 +2,12 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 import ibeis
 import utool as ut
-import dtool
+import dtool  # NOQA
 import numpy as np
 import cv2
 from os.path import join, exists
 import cPickle as pickle
-from collections import defaultdict
+#from collections import defaultdict
 from ibeis_flukematch.flukematch import (find_trailing_edge_cpp,
                                          block_integral_curvatures_cpp,
                                          get_distance_curvweighted,)
@@ -338,7 +338,7 @@ DEFAULT_ALGO_CONFIG = {
 }
 
 
-@ibeis.register_algo('BC_DTW', algo_result_class=dtool.MatchResult,
+@ibeis.register_algo('BC_DTW', algo_result_class=ibeis.AnnotMatch,
                      config_class=DEFAULT_ALGO_CONFIG)
 def id_algo_bc_dtw(depc, request):
     r"""
@@ -364,7 +364,7 @@ def id_algo_bc_dtw(depc, request):
         >>> aid_list = ut.compress(all_aids, isvalid)
         >>> depc = ibs.depc
         >>> qaids = aid_list[0:5]
-        >>> daids = aid_list[0:10]
+        >>> daids = aid_list[0:7]
         >>> cfgdict = {'weights': None, 'decision': 'average',
         >>>           'verbose': True, 'sizes': [5, 10, 15, 20]}
         >>> algoname = 'BC_DTW'
@@ -372,8 +372,15 @@ def id_algo_bc_dtw(depc, request):
         >>> propgen = id_algo_bc_dtw(depc, request)
         >>> am_list = list(propgen)
         >>> print('\n'.join(ut.lmap(str, am_list)))
-        >>> print(ut.repr2([am.annot_score_list for am in am_list], nl=1, precision=2))
+        >>> result1 = (ut.repr2(np.vstack([am.annot_score_list for am in am_list]), precision=2))
+        >>> am = am_list[0]
+        >>> # Execute via cache
+        >>> am_list2 = request.execute()
+        >>> result2 = (ut.repr2(np.vstack([am.annot_score_list for am in am_list2]), precision=2))
+        >>> print(result1)
+        >>> assert result1 == result2
     """
+    import vtool as vt
     qaid_list = request.qaids
     daid_list = request.daids
     config = request.config
@@ -404,20 +411,33 @@ def id_algo_bc_dtw(depc, request):
                                 enabled=config['verbose'])
 
     for query_curv, qaid, qnid in _progiter:
-        dists_by_nid = defaultdict(list)
+        #dists_by_nid = defaultdict(list)
         daid_dists = []
         for db_curv, daid, dnid in zip(db_curvs, daid_list, dnid_list):
-            pass
             distance = get_distance_curvweighted(query_curv, db_curv, curv_weights)
             daid_dists.append(-1 * distance)
-            dists_by_nid[dnid].append(-1 * distance)
+            #dists_by_nid[dnid].append(-1 * distance)
+        #break
+        annot_scores = np.array(daid_dists)
 
         decision_func = getattr(np, config['decision'])
-        dists_by_nid = {dnid: decision_func(
-            dists_by_nid[dnid]) for dnid in dists_by_nid}
-        dnid_dists = [dists_by_nid[dnid] for dnid in dnid_list]
+        #dists_by_nid = {dnid: decision_func(
+        #    dists_by_nid[dnid]) for dnid in dists_by_nid}
+        #dnid_dists = [dists_by_nid[dnid] for dnid in dnid_list]
 
-        yield dtool.MatchResult(qaid, daid_list, qnid, dnid_list, daid_dists, dnid_dists)
+        # Hacked in version of creating an annot match object
+        match_result = ibeis.AnnotMatch()
+        match_result.qaid = qaid
+        match_result.qnid = qnid
+        match_result.daid_list = np.array(daid_list)
+        match_result.dnid_list = np.array(dnid_list)
+        match_result._update_daid_index()
+        match_result._update_unique_nid_index()
+
+        grouped_annot_scores = vt.apply_grouping(annot_scores, match_result.name_groupxs)
+        name_scores = np.array([decision_func(dists) for dists in grouped_annot_scores])
+        match_result.set_cannonical_name_score(annot_scores, name_scores)
+        yield match_result
 
 
 if __name__ == '__main__':
