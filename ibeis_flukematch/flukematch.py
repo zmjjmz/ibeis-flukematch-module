@@ -118,6 +118,9 @@ if HAS_LIB:
 
 
 def block_integral_curvatures_cpp(sizes, coords):
+    """
+        >>> from ibeis_flukematch.flukematch import *  # NOQA
+    """
     # assume coords are in x, y
     coords = np.array(coords, dtype=np.int32)
     fit_size = (np.max(coords, axis=0) -
@@ -139,7 +142,10 @@ def block_integral_curvatures_cpp(sizes, coords):
         curvs[size] = np.zeros((fixed_coords.shape[0], 1), dtype=np.float32)
         block_curv(summed_table, summed_table.shape[0], summed_table.shape[1],
                    fixed_coords, fixed_coords.shape[0], size, curvs[size])
-    return curvs
+    #return curvs
+
+    curv_arr = np.concatenate([curvs[size] for size in sizes], axis=1)
+    return curv_arr
 
 if HAS_LIB:
     dtw_curvweighted = lib.dtw_curvweighted
@@ -150,15 +156,23 @@ if HAS_LIB:
 
 
 def get_distance_curvweighted(query_curv, db_curv, curv_weights, window=50):
-    ordered_sizes = sorted(curv_weights.keys())
+    """
+        >>> window=50
+        >>> from ibeis_flukematch.flukematch import *  # NOQA
+    """
+    #ordered_sizes = sorted(curv_weights.keys())
     # we just need to stack the curvatures and make sure that the ordering is
     # consistent w/curv_weights
-    curv_weights_nd = np.array([curv_weights[i]
-                                for i in ordered_sizes], dtype=np.float32)
-    query_curv_nd = np.hstack(
-        [np.array(query_curv[i], dtype=np.float32).reshape(-1, 1) for i in ordered_sizes])
-    db_curv_nd = np.hstack(
-        [np.array(db_curv[i], dtype=np.float32).reshape(-1, 1) for i in ordered_sizes])
+    #curv_weights_nd = np.array([curv_weights[i]
+    #                            for i in ordered_sizes], dtype=np.float32)
+    curv_weights_nd = np.atleast_2d(np.array(curv_weights, dtype=np.float32))
+    curv_weights_nd = np.ascontiguousarray(curv_weights_nd)
+    query_curv_nd = query_curv
+    db_curv_nd = db_curv
+    #query_curv_nd = np.hstack(
+    #    [np.array(query_curv[i], dtype=np.float32).reshape(-1, 1) for i in ordered_sizes])
+    #db_curv_nd = np.hstack(
+    #    [np.array(db_curv[i], dtype=np.float32).reshape(-1, 1) for i in ordered_sizes])
 
     query_len = query_curv_nd.shape[0]
     db_len = db_curv_nd.shape[0]

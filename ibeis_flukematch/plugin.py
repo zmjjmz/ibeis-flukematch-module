@@ -53,12 +53,12 @@ def debug_depcache(ibs):
 
 
 @ibeis.register_preproc('Has_Notch', [ROOT], ['flag'], [bool])
-def preproc_has_tips(depc_obj, aid_list, config=None):
+def preproc_has_tips(depc, aid_list, config=None):
     r"""
     HACK TO FIND ONLY ANNTS THAT HAVE TIPS
 
     Args:
-        depc_obj (DependencyCache):
+        depc (DependencyCache):
         aid_list (list):  list of annotation rowids
         config (dict): (default = {})
 
@@ -87,7 +87,7 @@ def preproc_has_tips(depc_obj, aid_list, config=None):
     if config is None:
         config = {}
     config = config.copy()
-    ibs = depc_obj.controller
+    ibs = depc.controller
     fn = join(ibs.get_dbdir(), 'fluke_image_points.pkl')
     if not exists(fn):
         print("[fluke-module] ERROR: Could not find image points file")
@@ -114,10 +114,10 @@ DEFAULT_NTIP_CONFIG = {}
 
 
 @ibeis.register_preproc('Notch_Tips', [ROOT], ['notch', 'left', 'right'], [np.ndarray, np.ndarray, np.ndarray])
-def preproc_notch_tips(depc_obj, aid_list, config=None):
+def preproc_notch_tips(depc, aid_list, config=None):
     r"""
     Args:
-        depc_obj (DependencyCache):
+        depc (DependencyCache):
         aid_list (list):  list of annotation rowids
         config (dict): (default = {})
 
@@ -146,7 +146,7 @@ def preproc_notch_tips(depc_obj, aid_list, config=None):
         config = DEFAULT_NTIP_CONFIG
     config = config.copy()
 
-    ibs = depc_obj.controller
+    ibs = depc.controller
     # TODO: Implement manual annotation options
     # HACK: Read in a file that associates image names w/these annotations, and
     #   try to associate these w/the image names
@@ -179,10 +179,10 @@ DEFAULT_TE_CONFIG = {'n_neighbors': 5}
 
 
 @ibeis.register_preproc('Trailing_Edge', [ROOT, 'Notch_Tips'], ['edge', 'cost'], [np.ndarray, float])
-def preproc_trailing_edge(depc_obj, aid_list, ntid_list, config=None):
+def preproc_trailing_edge(depc, aid_list, ntid_list, config=None):
     r"""
     Args:
-        depc_obj (DependencyCache):
+        depc (DependencyCache):
         aid_list (list):  list of annotation rowids
         config (dict): (default = {'n_neighbors': 5})
 
@@ -203,11 +203,11 @@ def preproc_trailing_edge(depc_obj, aid_list, ntid_list, config=None):
         >>> isvalid = ibs.depc.get_property('Has_Notch', all_aids, 'flag')
         >>> aid_list = ut.compress(all_aids, isvalid)[0:10]
         >>> print('aid_list = %r' % (aid_list,))
-        >>> depc_obj = ibs.depc
+        >>> depc = ibs.depc
         >>> config = {'n_neighbors': 5}
         >>> ntid_list = ibs.depc.get_rowids('Notch_Tips', aid_list)
         >>> print('ntid_list = %r' % (ntid_list,))
-        >>> propgen = preproc_trailing_edge(depc_obj, aid_list, ntid_list, config)
+        >>> propgen = preproc_trailing_edge(depc, aid_list, ntid_list, config)
         >>> results = list(propgen)
         >>> tedge_list, cost_list = list(zip(*results))
         >>> print('tedge_list = %r' % (tedge_list,))
@@ -216,7 +216,7 @@ def preproc_trailing_edge(depc_obj, aid_list, ntid_list, config=None):
     if config is None:
         config = DEFAULT_TE_CONFIG
     config = config.copy()
-    ibs = depc_obj.controller
+    ibs = depc.controller
     # get the notch / left / right points
     print('[preproc_te] aid_list = %r' % (trunc_repr(aid_list),))
     # points = ibs.depc.get_property('Notch_Tips', aid_list)
@@ -241,11 +241,47 @@ def preproc_trailing_edge(depc_obj, aid_list, ntid_list, config=None):
         yield (tedge, cost)
 
 
+#def preproc_binarized(coords, sizes):
+#    """
+#        >>> # DISABLE_DOCTEST
+#        >>> from ibeis_flukematch.plugin import *  # NOQA
+#        >>> ibs = ibeis.opendb(defaultdb='humpbacks')
+#        >>> all_aids = ibs.get_valid_aids()
+#        >>> isvalid = ibs.depc.get_property('Has_Notch', all_aids, 'flag', _debug=True)
+#        >>> aid_list = ut.compress(all_aids, isvalid)[0:1]
+#        >>> tedges = depc.get_property('Trailing_Edge', aid_list, 'edge', config)
+#        >>> coords = tedges[0]
+#        >>> sizes = [20]
+#    """
+#    coords = np.array(coords, dtype=np.int32)
+#    fit_size = (np.max(coords, axis=0) - np.min(coords, axis=0)) + 1
+#    binarized = np.zeros(fit_size[::-1], dtype=np.float32)
+#    fixed_coords = np.array((coords - np.min(coords, axis=0)))[:, ::-1]
+#    fixed_coords = np.ascontiguousarray(fixed_coords)
+#    binarized[zip(*fixed_coords)] = 1
+#    binarized = binarized.cumsum(axis=0)
+#    binarized[np.where(binarized > 0)] = 1
+#    summed_table = binarized.cumsum(axis=0).cumsum(axis=1)
+#    yield (summed_table, fixed_coords)
+
+
+#def preproc_block_curve(summed_table, fixed_coords, config):
+#    """
+#    size = 10
+#    """
+#    from ibeis_flukematch import flukematch
+#    size = config['size']
+#    curv = np.zeros((fixed_coords.shape[0], 1), dtype=np.float32)
+#    flukematch.block_curv(summed_table, summed_table.shape[0],
+#                          summed_table.shape[1], fixed_coords,
+#                          fixed_coords.shape[0], size, curv)
+
+
 @ibeis.register_preproc('Block_Curvature', ['Trailing_Edge'], ['curvature'], [np.ndarray])
-def preproc_block_curvature(depc_obj, te_rowids, config={'sizes': [5, 10, 15, 20]}):
+def preproc_block_curvature(depc, te_rowids, config={'sizes': [5, 10, 15, 20]}):
     r"""
     Args:
-        depc_obj (DependencyCache):
+        depc (DependencyCache):
         aid_list (list):  list of annotation rowids
         config (dict): (default = {'sizes': [5, 10, 15, 20]})
 
@@ -264,17 +300,17 @@ def preproc_block_curvature(depc_obj, te_rowids, config={'sizes': [5, 10, 15, 20
         >>> isvalid = ibs.depc.get_property('Has_Notch', all_aids, 'flag', _debug=True)
         >>> aid_list = ut.compress(all_aids, isvalid)[0:4]
         >>> print('\n!!![test] aid_list = %r' % (aid_list,))
-        >>> depc_obj = ibs.depc
+        >>> depc = ibs.depc
         >>> config = {'sizes': [5, 10, 15, 20]}
-        >>> te_rowids = depc_obj.get_rowids('Trailing_Edge', aid_list, config)
+        >>> te_rowids = depc.get_rowids('Trailing_Edge', aid_list, config)
         >>> print('te_rowids = %r' % (te_rowids,))
-        >>> propgen = preproc_block_curvature(depc_obj, te_rowids, config)
+        >>> propgen = preproc_block_curvature(depc, te_rowids, config)
         >>> curve_arr_list = list(propgen)
         >>> result = ut.depth_profile(curve_arr_list)
         >>> print(result)
     """
     print('Computing block curvature')
-    ibs = depc_obj.controller
+    ibs = depc.controller
     # NOTE: Need to use get_native_property because the take the type
     # of the parent (trailing ege) ids, not the root (annot) ids.
     # get the trailing edges
@@ -296,29 +332,18 @@ def preproc_block_curvature(depc_obj, te_rowids, config={'sizes': [5, 10, 15, 20
 
 DEFAULT_ALGO_CONFIG = {
     'verbose': False,
-    'daid_list': None,
-    'decision': np.average,
+    'decision': 'average',
     'sizes': [5, 10, 15, 20],
     'weights': None
 }
 
 
-class TempAnnotMatch(dtool.AlgoResult):
-    def __init__(self, qaid=None, daids=None, dnid_list=None,
-                 annot_score_list=None, unique_nids=None,
-                 name_score_list=None):
-        self.qaid = qaid
-        self.daids = daids
-        self.dnid_list = dnid_list
-        self.annot_score_list = annot_score_list
-        self.name_score_list = name_score_list
-
-
-@ibeis.register_algo('BC_DTW', algo_result_class=TempAnnotMatch)
-def id_algo_bc_dtw(depc_obj, qaid_list, config=None):
+@ibeis.register_algo('BC_DTW', algo_result_class=dtool.MatchResult,
+                     config_class=DEFAULT_ALGO_CONFIG)
+def id_algo_bc_dtw(depc, request):
     r"""
     Args:
-        depc_obj (DependencyCache):
+        depc (DependencyCache):
         qaid_list (list):
         config (dict): (default = {'weights': None,
             'decision': <function average at 0x7ff71b2bd7d0>, 'daid_list':
@@ -337,32 +362,39 @@ def id_algo_bc_dtw(depc_obj, qaid_list, config=None):
         >>> all_aids = ibs.get_valid_aids()
         >>> isvalid = ibs.depc.get_property('Has_Notch', all_aids, 'flag')
         >>> aid_list = ut.compress(all_aids, isvalid)
-        >>> depc_obj = ibs.depc
-        >>> qaid_list = aid_list
-        >>> daid_list = aid_list
-        >>> config = {'weights': None, 'decision': np.average, 'daid_list': daid_list,
-        >>>           'verbose': False, 'sizes': [5, 10, 15, 20]}
-        >>> result = id_algo_bc_dtw(depc_obj, qaid_list, config)
-        >>> print(result)
+        >>> depc = ibs.depc
+        >>> qaids = aid_list[0:5]
+        >>> daids = aid_list[0:10]
+        >>> cfgdict = {'weights': None, 'decision': 'average',
+        >>>           'verbose': True, 'sizes': [5, 10, 15, 20]}
+        >>> algoname = 'BC_DTW'
+        >>> request = depc.new_algo_request(algoname, qaids, daids, cfgdict)
+        >>> propgen = id_algo_bc_dtw(depc, request)
+        >>> am_list = list(propgen)
+        >>> print('\n'.join(ut.lmap(str, am_list)))
+        >>> print(ut.repr2([am.annot_score_list for am in am_list], nl=1, precision=2))
     """
-    if config is None:
-        config = DEFAULT_ALGO_CONFIG
+    qaid_list = request.qaids
+    daid_list = request.daids
+    config = request.config
 
-    assert(config['daid_list'] is not None)
-    weights = config['weights']
+    #if config is None:
+    #    config = DEFAULT_ALGO_CONFIG
+
+    #assert(config['daid_list'] is not None)
+    curv_weights = config['weights']
     sizes = config['sizes']
-    if weights is not None:
-        assert(len(weights) == len(sizes))
+    if curv_weights is not None:
+        assert(len(curv_weights) == len(sizes))
     else:
-        weights = [1.] * len(sizes)
+        curv_weights = [1.] * len(sizes)
 
-    ibs = depc_obj.controller
-    daid_list = config['daid_list']
+    ibs = depc.controller
     block_config = ut.dict_subset(config, ['sizes'])
-    query_curvs = depc_obj.get_property(
-        'Block_Curvature', qaid_list, config=block_config)
-    db_curvs = depc_obj.get_property(
-        'Block_Curvature', daid_list, config=block_config)
+    query_curvs = depc.get_property(
+        'Block_Curvature', qaid_list, 'curvature', config=block_config)
+    db_curvs = depc.get_property(
+        'Block_Curvature', daid_list, 'curvature', config=block_config)
 
     qnid_list = ibs.get_annot_nids(qaid_list)
     dnid_list = ibs.get_annot_nids(daid_list)
@@ -375,15 +407,17 @@ def id_algo_bc_dtw(depc_obj, qaid_list, config=None):
         dists_by_nid = defaultdict(list)
         daid_dists = []
         for db_curv, daid, dnid in zip(db_curvs, daid_list, dnid_list):
-            distance = get_distance_curvweighted(query_curv, db_curv, weights)
+            pass
+            distance = get_distance_curvweighted(query_curv, db_curv, curv_weights)
             daid_dists.append(-1 * distance)
             dists_by_nid[dnid].append(-1 * distance)
 
-        dists_by_nid = {dnid: config['decision'](
+        decision_func = getattr(np, config['decision'])
+        dists_by_nid = {dnid: decision_func(
             dists_by_nid[dnid]) for dnid in dists_by_nid}
         dnid_dists = [dists_by_nid[dnid] for dnid in dnid_list]
 
-        yield ibeis.AnnotMatch(qaid, qnid, daid_list, dnid_list, daid_dists, dnid_dists)
+        yield dtool.MatchResult(qaid, daid_list, qnid, dnid_list, daid_dists, dnid_dists)
 
 
 if __name__ == '__main__':
