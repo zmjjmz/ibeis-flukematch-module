@@ -2,6 +2,7 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 import ibeis
 import utool as ut
+import dtool
 import numpy as np
 import cv2
 from os.path import join, exists
@@ -24,6 +25,7 @@ def trunc_repr(obj):
 def debug_depcache(ibs):
     r"""
     CommandLine:
+        python -m ibeis_flukematch.plugin --exec-debug_depcache
         python -m ibeis_flukematch.plugin --exec-debug_depcache --show --no-cnn
 
     Example:
@@ -40,6 +42,7 @@ def debug_depcache(ibs):
     print('te_deps = %r' % (te_deps,))
     notch_tip_deps = ibs.depc.get_dependencies('Notch_Tips')
     print('notch_tip_deps = %r' % (notch_tip_deps,))
+    ibs.depc.print_schemas()
     try:
         ibs.depc.show_digraph()
     except Exception as ex:
@@ -66,6 +69,8 @@ def preproc_has_tips(depc_obj, aid_list, config=None):
         python -m ibeis_flukematch.plugin --exec-preproc_has_tips --db testdb1
         python -m ibeis_flukematch.plugin --exec-preproc_has_tips --dbdir /home/zach/data/IBEIS/humpbacks --no-cnn
         python -m ibeis_flukematch.plugin --exec-preproc_has_tips --dbdir /home/zach/data/IBEIS/humpbacks --no-cnn --clear-all-depcache
+        python -m ibeis_flukematch.plugin --exec-preproc_has_tips --db humpbacks --no-cnn
+        python -m ibeis_flukematch.plugin --exec-preproc_has_tips --db humpbacks --no-cnn --clear-all-depcache
 
     Example:
         >>> # DISABLE_DOCTEST
@@ -75,7 +80,6 @@ def preproc_has_tips(depc_obj, aid_list, config=None):
         >>> config = {}
         >>> propgen = preproc_has_tips(ibs.depc, aid_list, config)
         >>> result = list(propgen)
-        >>> #print('result = %r' % (result,))
         >>> hasnotch_list = ut.take_column(result, 0)
         >>> num_with = sum(hasnotch_list)
         >>> print('%r / %r annots have notches' % (num_with, len(aid_list)))
@@ -123,6 +127,7 @@ def preproc_notch_tips(depc_obj, aid_list, config=None):
     CommandLine:
         python -m ibeis_flukematch.plugin --exec-preproc_notch_tips
         python -m ibeis_flukematch.plugin --exec-preproc_notch_tips --dbdir /home/zach/data/IBEIS/humpbacks --no-cnn
+        python -m ibeis_flukematch.plugin --exec-preproc_notch_tips --db humpbacks --no-cnn
 
     Example:
         >>> # DISABLE_DOCTEST
@@ -170,9 +175,6 @@ def preproc_notch_tips(depc_obj, aid_list, config=None):
             raise NotImplementedError("ERROR: aid=%r does not have points associated" % (aid,))
 
 
-# Technically ROOT should be 'Notch_Tips', but this will hack it to work
-# for now
-
 DEFAULT_TE_CONFIG = {'n_neighbors': 5}
 
 
@@ -191,6 +193,7 @@ def preproc_trailing_edge(depc_obj, aid_list, ntid_list, config=None):
         python -m ibeis_flukematch.plugin --exec-preproc_trailing_edge --show
         python -m ibeis_flukematch.plugin --exec-preproc_trailing_edge --dbdir /home/zach/data/IBEIS/humpbacks --no-cnn
         python -m ibeis_flukematch.plugin --exec-preproc_trailing_edge --dbdir /home/zach/data/IBEIS/humpbacks --no-cnn --clear-all-depcache
+        python -m ibeis_flukematch.plugin --exec-preproc_trailing_edge --db humpbacks --no-cnn
 
     Example:
         >>> # DISABLE_DOCTEST
@@ -251,21 +254,23 @@ def preproc_block_curvature(depc_obj, te_rowids, config={'sizes': [5, 10, 15, 20
 
     CommandLine:
         python -m ibeis_flukematch.plugin --exec-preproc_block_curvature --dbdir /home/zach/data/IBEIS/humpbacks --no-cnn
+        python -m ibeis_flukematch.plugin --exec-preproc_block_curvature --db humpbacks --no-cnn
 
     Example:
         >>> # DISABLE_DOCTEST
         >>> from ibeis_flukematch.plugin import *  # NOQA
         >>> ibs = ibeis.opendb(defaultdb='humpbacks')
         >>> all_aids = ibs.get_valid_aids()
-        >>> isvalid = ibs.depc.get_property('Has_Notch', all_aids, 'flag')
-        >>> aid_list = ut.compress(all_aids, isvalid)[0:10]
+        >>> isvalid = ibs.depc.get_property('Has_Notch', all_aids, 'flag', _debug=True)
+        >>> aid_list = ut.compress(all_aids, isvalid)[0:4]
         >>> print('\n!!![test] aid_list = %r' % (aid_list,))
         >>> depc_obj = ibs.depc
         >>> config = {'sizes': [5, 10, 15, 20]}
         >>> te_rowids = depc_obj.get_rowids('Trailing_Edge', aid_list, config)
         >>> print('te_rowids = %r' % (te_rowids,))
         >>> propgen = preproc_block_curvature(depc_obj, te_rowids, config)
-        >>> result = list(propgen)
+        >>> curve_arr_list = list(propgen)
+        >>> result = ut.depth_profile(curve_arr_list)
         >>> print(result)
     """
     print('Computing block curvature')
@@ -297,7 +302,6 @@ DEFAULT_ALGO_CONFIG = {
     'weights': None
 }
 
-import dtool
 
 class TempAnnotMatch(dtool.AlgoResult):
     def __init__(self, qaid=None, daids=None, dnid_list=None,
@@ -328,7 +332,6 @@ def id_algo_bc_dtw(depc_obj, qaid_list, config=None):
 
     Example:
         >>> # DISABLE_DOCTEST
-        >>> from ibeis_flukematch.plugin import *  # NOQA
         >>> from ibeis_flukematch.plugin import *  # NOQA
         >>> ibs = ibeis.opendb(defaultdb='humpbacks')
         >>> all_aids = ibs.get_valid_aids()

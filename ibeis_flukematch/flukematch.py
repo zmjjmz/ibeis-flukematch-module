@@ -1,6 +1,9 @@
+# -*- coding: utf-8 -*-
+from __future__ import absolute_import, division, print_function
 import cv2
 import numpy as np
 import ctypes
+from os.path import dirname, join
 
 
 def find_trailing_edge(img, start, end, center=None, n_neighbors=3):
@@ -66,7 +69,6 @@ def find_trailing_edge(img, start, end, center=None, n_neighbors=3):
 
 
 try:
-    from os.path import dirname, join
     lib = ctypes.cdll.LoadLibrary(join(dirname(__file__), 'flukematch_lib.so'))
     HAS_LIB = True
 except Exception as ex:
