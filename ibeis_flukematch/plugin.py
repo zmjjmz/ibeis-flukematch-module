@@ -126,8 +126,9 @@ class ChipConfig(dtool.TableConfig):
     def get_param_info_list(self):
         return [
             ut.ParamInfo('resize_dim', 'width',
-                         valid_values=['area', 'width', 'heigh', 'diag']),
-            ut.ParamInfo('dim_size', 128, 'sz'),
+                         valid_values=['area', 'width', 'heigh', 'diag'],
+                         hideif=lambda cfg: cfg['dim_size'] is None),
+            ut.ParamInfo('dim_size', 128, 'sz', hideif=None),
             ut.ParamInfo('preserve_aspect', True, hideif=True),
             ut.ParamInfo('histeq', False, hideif=False),
             ut.ParamInfo('ext', '.png'),
@@ -164,13 +165,16 @@ def preproc_chip(depc, aid_list, config=None):
         >>> import ibeis
         >>> ibs = ibeis.opendb(defaultdb='testdb1')
         >>> depc = ibs.depc
-        >>> config = None
+        >>> config = ChipConfig(dim_size=None)
         >>> aid_list = ibs.get_valid_aids()[0:20]
-        >>> chips = depc.get_property(ibs.const.CHIP_TABLE, aid_list, 'img')
-        >>> depc[const.CHIP_TABLE].print_csv()
+        >>> chips = depc.get_property(ibs.const.CHIP_TABLE, aid_list, 'img', config)
+        >>> #procgen = preproc_chip(depc, aid_list, config)
+        >>> #chip_props = list(procgen)
+        >>> #chips = ut.take_column(chip_props, 0)
         >>> import plottool as pt
         >>> iteract_obj = pt.interact_multi_image.MultiImageInteraction(chips, nPerPage=4)
         >>> pt.show_if_requested()
+        >>> #depc[const.CHIP_TABLE].print_csv()
     """
     print('Preprocess Chips')
     print(config)
@@ -180,14 +184,17 @@ def preproc_chip(depc, aid_list, config=None):
     if config is None:
         config = ChipConfig()
 
+    ut.ensuredir(chip_dpath)
+
     ext = config['ext']
 
     cfghashid = config.get_hashid()
     avuuid_list = ibs.get_annot_visual_uuids(aid_list)
 
-    _fmt = 'chip_avuuid_{avuuid}_{cfghashid}{ext}'
-    cfname_list = [_fmt.format(avuuid=avuuid, ext=ext, cfghashid=cfghashid)
-                   for avuuid in avuuid_list]
+    # TODO: just hash everything together
+    _fmt = 'chip_aid_{aid}_avuuid_{avuuid}_{cfghashid}{ext}'
+    cfname_list = [_fmt.format(aid=aid, avuuid=avuuid, ext=ext, cfghashid=cfghashid)
+                   for aid, avuuid in zip(aid_list, avuuid_list)]
     cfpath_list = [ut.unixjoin(chip_dpath, chip_fname)
                    for chip_fname in cfname_list]
 
@@ -196,6 +203,11 @@ def preproc_chip(depc, aid_list, config=None):
     theta_list  = ibs.get_annot_thetas(aid_list)
     bbox_size_list = ut.take_column(bbox_list, [2, 3])
 
+    # Checks
+    invalid_flags = [w == 0 or h == 0 for (w, h) in bbox_size_list]
+    invalid_aids = ut.compress(aid_list, invalid_flags)
+    assert len(invalid_aids) == 0, 'invalid aids=%r' % (invalid_aids,)
+
     dim_size = config['dim_size']
     resize_dim = config['resize_dim']
     scale_func_dict = {
@@ -203,29 +215,27 @@ def preproc_chip(depc, aid_list, config=None):
         'root_area': vt.get_scaled_size_with_area,
     }
     scale_func = scale_func_dict[resize_dim]
-    if resize_dim == 'root_area':
-        dim_size = dim_size ** 2
-    newsize_list = [scale_func(dim_size, w, h) for (w, h) in bbox_size_list]
 
-    invalid_flags = [w == 0 or h == 0 for (w, h) in bbox_size_list]
-    invalid_aids = ut.compress(aid_list, invalid_flags)
+    if dim_size is None:
+        newsize_list = bbox_size_list
+    else:
+        if resize_dim == 'root_area':
+            dim_size = dim_size ** 2
+        newsize_list = [scale_func(dim_size, w, h) for (w, h) in bbox_size_list]
 
-    assert len(invalid_aids) == 0, 'invalid aids=%r' % (invalid_aids,)
+    # Build transformation from image to chip
+    M_list = [vt.get_image_to_chip_transform(bbox, new_size, theta) for
+              bbox, theta, new_size in zip(bbox_list, theta_list, newsize_list)]
 
-    arg_iter = zip(cfpath_list, gfpath_list, bbox_list, theta_list,
-                   newsize_list)
+    arg_iter = zip(cfpath_list, gfpath_list, newsize_list, M_list)
     arg_list = list(arg_iter)
 
     flags = cv2.INTER_LANCZOS4
     borderMode = cv2.BORDER_CONSTANT
     warpkw = dict(flags=flags, borderMode=borderMode)
 
-    ut.ensuredir(chip_dpath)
     for tup in ut.ProgIter(arg_list, lbl='computing chips'):
-        cfpath, gfpath, bbox, theta, new_size = tup
-        chipBGR = vt.compute_chip(gfpath, bbox, theta, new_size)
-        # Build transformation from image to chip
-        M = vt.get_image_to_chip_transform(bbox, new_size, theta)
+        cfpath, gfpath, new_size, M = tup
         # Read parent image
         imgBGR = vt.imread(gfpath)
         # Warp chip
@@ -252,8 +262,7 @@ def preproc_notch_tips(depc, cid_list, config=None):
 
     CommandLine:
         python -m ibeis_flukematch.plugin --exec-preproc_notch_tips
-        python -m ibeis_flukematch.plugin --exec-preproc_notch_tips --dbdir /home/zach/data/IBEIS/humpbacks --no-cnn
-        python -m ibeis_flukematch.plugin --exec-preproc_notch_tips --db humpbacks --no-cnn
+        python -m ibeis_flukematch.plugin --exec-preproc_notch_tips --db humpbacks --no-cnn --show
         python -m ibeis_flukematch.plugin --exec-preproc_notch_tips --db humpbacks --no-cnn --clear-all-depcache
 
     Example:
@@ -262,13 +271,26 @@ def preproc_notch_tips(depc, cid_list, config=None):
         >>> ibs = ibeis.opendb(defaultdb='humpbacks')
         >>> all_aids = ibs.get_valid_aids()
         >>> isvalid = ibs.depc.get_property('Has_Notch', all_aids, 'flag')
-        >>> aid_list = ut.compress(all_aids, isvalid)
-        >>> cid_list = ibs.depc.get_rowids(const.CHIP_TABLE, aid_list)
-        >>> config = {}
-        >>> result = preproc_notch_tips(ibs.depc, cid_list, config)
-        >>> result = list(result)
+        >>> aid_list = ut.compress(all_aids, isvalid)[0:100]
+        >>> config = dict(dim_size=None)
+        >>> #config = dict()
+        >>> cid_list = ibs.depc.get_rowids(const.CHIP_TABLE, aid_list, config)
+        >>> propgen = preproc_notch_tips(ibs.depc, cid_list, config)
+        >>> notch_tips = list(propgen)
         >>> #print(len(filter(lambda x: x is not None, result)))
-        >>> print('depth_profile(notch_tips) = %r' % (ut.depth_profile(result),))
+        >>> result = ut.depth_profile(notch_tips)
+        >>> print('depth_profile(notch_tips) = %r' % (result,))
+        >>> ut.quit_if_noshow()
+        >>> chip_list = ibs.depc.get_native_property('chips', cid_list, 'img')
+        >>> import plottool as pt
+        >>> ut.ensure_pylab_qt4()
+        >>> for notch, chip in ut.InteractiveIter(zip(notch_tips, chip_list)):
+        >>>     pt.reset()
+        >>>     pt.imshow(chip)
+        >>>     kpts_ = np.array(notch)
+        >>>     pt.draw_kpts2(kpts_, pts=True, ell=False, pts_size=20)
+        >>>     pt.update()
+        >>> ut.show_if_requested()
     """
     print('Preprocess Notch_Tips')
     print(config)
@@ -301,9 +323,10 @@ def preproc_notch_tips(depc, cid_list, config=None):
             ptdict = img_points_map[imgn]
             notch, left, right = ut.dict_take(ptdict, ['notch', 'left', 'right'])
 
-            notch_ = notch.dot(M[0:2])[0:2]
-            left_ = left.dot(M[0:2])[0:2]
-            right_ = right.dot(M[0:2])[0:2]
+            notch_ = M[0:2].T.dot(notch)[0:2]
+            left_  = M[0:2].T.dot(left)[0:2]
+            right_ = M[0:2].T.dot(right)[0:2]
+
             yield (notch_, left_, right_)
         except KeyError:
             print(
@@ -523,12 +546,13 @@ def id_algo_bc_dtw(depc, request):
         >>> depc = ibs.depc
         >>> qaids = aid_list[0:5]
         >>> daids = aid_list[0:7]
-        >>> qaids = aid_list
-        >>> daids = aid_list
+        >>> #qaids = aid_list
+        >>> #daids = aid_list
         >>> cfgdict = {'weights': None, 'decision': 'average',
         >>>           'verbose': True, 'sizes': (5, 10, 15, 20)}
         >>> algoname = 'BC_DTW'
         >>> request = depc.new_algo_request(algoname, qaids, daids, cfgdict)
+        >>> # Execute function
         >>> propgen = id_algo_bc_dtw(depc, request)
         >>> am_list = list(propgen)
         >>> print('\n'.join(ut.lmap(str, am_list)))
@@ -560,6 +584,8 @@ def id_algo_bc_dtw(depc, request):
 
     ibs = depc.controller
     block_config = ut.dict_subset(config, ['sizes'])
+
+    #block_config['dim_size'] = 256
     query_curvs = depc.get_property(
         'Block_Curvature', qaid_list, 'curvature', config=block_config)
     db_curvs = depc.get_property(
