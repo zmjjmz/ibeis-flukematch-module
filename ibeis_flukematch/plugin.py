@@ -354,6 +354,7 @@ def id_algo_bc_dtw(depc, request):
 
     CommandLine:
         python -m ibeis_flukematch.plugin --exec-id_algo_bc_dtw --show
+        ibeis -e rank_cdf --db humpbacks -t default:pipeline_root=BC_DTW --qaid-override=1,9,15,16,18 --daid-override=1,9,15,16,18,21,22  --show --clear-all-depcache --nocache
 
     Example:
         >>> # DISABLE_DOCTEST
@@ -417,20 +418,28 @@ def id_algo_bc_dtw(depc, request):
             distance = get_distance_curvweighted(query_curv, db_curv, curv_weights)
             daid_dists.append(-1 * distance)
             #dists_by_nid[dnid].append(-1 * distance)
-        #break
-        annot_scores = np.array(daid_dists)
 
         decision_func = getattr(np, config['decision'])
         #dists_by_nid = {dnid: decision_func(
         #    dists_by_nid[dnid]) for dnid in dists_by_nid}
         #dnid_dists = [dists_by_nid[dnid] for dnid in dnid_list]
 
+        # Remove distance to self
+        annot_scores = np.array(daid_dists)
+        daid_list_ = np.array(daid_list)
+        dnid_list_ = np.array(dnid_list)
+
+        isself = (daid_list_ != qaid)
+        daid_list_ = daid_list_.compress(isself)
+        dnid_list_ = dnid_list_.compress(isself)
+        annot_scores = annot_scores.compress(isself)
+
         # Hacked in version of creating an annot match object
         match_result = ibeis.AnnotMatch()
         match_result.qaid = qaid
         match_result.qnid = qnid
-        match_result.daid_list = np.array(daid_list)
-        match_result.dnid_list = np.array(dnid_list)
+        match_result.daid_list = daid_list_
+        match_result.dnid_list = dnid_list_
         match_result._update_daid_index()
         match_result._update_unique_nid_index()
 
