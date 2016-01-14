@@ -81,6 +81,11 @@ def preproc_has_tips(depc, aid_list, config=None):
         >>> result = list(propgen)
         >>> hasnotch_list = ut.take_column(result, 0)
         >>> num_with = sum(hasnotch_list)
+        >>> valid_aids = ut.compress(aid_list, hasnotch_list)
+        >>> ibs.append_annot_case_tags(valid_aids, ['hasnotch'] * len(valid_aids))
+        >>> #ibs.set_annot_prop('hasnotch', valid_aids, [True] * len(valid_aids))
+        >>> #ibs.set_annot_prop('hasnotch', valid_aids, [False] * len(valid_aids))
+        >>> print(ibs.get_annot_info(valid_aids[2], default=True))
         >>> print('%r / %r annots have notches' % (num_with, len(aid_list)))
     """
     print('Preprocess Has_Notch')
@@ -128,7 +133,8 @@ class ChipConfig(dtool.TableConfig):
             ut.ParamInfo('resize_dim', 'width',
                          valid_values=['area', 'width', 'heigh', 'diag'],
                          hideif=lambda cfg: cfg['dim_size'] is None),
-            ut.ParamInfo('dim_size', 128, 'sz', hideif=None),
+            #ut.ParamInfo('dim_size', 128, 'sz', hideif=None),
+            ut.ParamInfo('dim_size', 960, 'sz', hideif=None),
             ut.ParamInfo('preserve_aspect', True, hideif=True),
             ut.ParamInfo('histeq', False, hideif=False),
             ut.ParamInfo('ext', '.png'),
@@ -518,7 +524,7 @@ DEFAULT_ALGO_CONFIG = {
 
 
 @ibeis.register_algo('BC_DTW', algo_result_class=ibeis.AnnotMatch,
-                     config_class=DEFAULT_ALGO_CONFIG)
+                     config_class=DEFAULT_ALGO_CONFIG, chunksize=8)
 def id_algo_bc_dtw(depc, request):
     r"""
     Args:
@@ -534,7 +540,10 @@ def id_algo_bc_dtw(depc, request):
     CommandLine:
         python -m ibeis_flukematch.plugin --exec-id_algo_bc_dtw --show
         ibeis -e rank_cdf --db humpbacks -t default:pipeline_root=BC_DTW --qaid-override=1,9,15,16,18 --daid-override=1,9,15,16,18,21,22  --show --clear-all-depcache --nocache
-        ibeis -e rank_cdf --db humpbacks -t default:pipeline_root=BC_DTW --qaid-override=1,9,15,16,18 --daid-override=1,9,15,16,18,21,22  --show --nocache
+        ibeis -e rank_cdf --db humpbacks -t default:pipeline_root=BC_DTW -a timectrl:has_any=hasnotch --show --nocache
+
+        ibeis -e rank_cdf --db humpbacks -a timectrl:has_any=hasnotch -t default:pipeline_root=BC_DTW --show
+        ibeis -e rank_cdf --db humpbacks -a default:has_any=hasnotch,mingt=2 -t default:pipeline_root=BC_DTW --show
 
     Example:
         >>> # DISABLE_DOCTEST
@@ -544,8 +553,8 @@ def id_algo_bc_dtw(depc, request):
         >>> isvalid = ibs.depc.get_property('Has_Notch', all_aids, 'flag')
         >>> aid_list = ut.compress(all_aids, isvalid)
         >>> depc = ibs.depc
-        >>> qaids = aid_list[0:5]
-        >>> daids = aid_list[0:7]
+        >>> qaids = aid_list[0:100]
+        >>> daids = aid_list[0:100]
         >>> #qaids = aid_list
         >>> #daids = aid_list
         >>> cfgdict = {'weights': None, 'decision': 'average',
@@ -595,8 +604,8 @@ def id_algo_bc_dtw(depc, request):
     dnid_list = ibs.get_annot_nids(daid_list)
 
     _iter = zip(query_curvs, qaid_list, qnid_list)
-    _progiter = ut.ProgressIter(_iter, lbl='QueryAID',
-                                enabled=config['verbose'])
+    _progiter = ut.ProgressIter(_iter, lbl='Query BC_DTW',
+                                enabled=not ut.QUIET)
 
     for query_curv, qaid, qnid in _progiter:
         #dists_by_nid = defaultdict(list)
@@ -616,10 +625,10 @@ def id_algo_bc_dtw(depc, request):
         daid_list_ = np.array(daid_list)
         dnid_list_ = np.array(dnid_list)
 
-        isself = (daid_list_ != qaid)
-        daid_list_ = daid_list_.compress(isself)
-        dnid_list_ = dnid_list_.compress(isself)
-        annot_scores = annot_scores.compress(isself)
+        is_valid = (daid_list_ != qaid)
+        daid_list_ = daid_list_.compress(is_valid)
+        dnid_list_ = dnid_list_.compress(is_valid)
+        annot_scores = annot_scores.compress(is_valid)
 
         # Hacked in version of creating an annot match object
         match_result = ibeis.AnnotMatch()
