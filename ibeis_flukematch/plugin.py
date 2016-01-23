@@ -10,10 +10,14 @@ from os.path import join, exists
 import cPickle as pickle
 from ibeis import constants as const
 #from collections import defaultdict
+from ibeis import register_preproc, register_algo
 from ibeis_flukematch.flukematch import (find_trailing_edge_cpp,
                                          block_integral_curvatures_cpp,
                                          get_distance_curvweighted,)
 (print, rrr, profile) = ut.inject2(__name__, '[flukeplug]')
+
+#register_preproc = lambda *args, **kwargs: ut.identity
+#register_algo = lambda *args, **kwargs: ut.identity
 
 ROOT = ibeis.const.ANNOTATION_TABLE
 
@@ -51,7 +55,7 @@ def debug_depcache(ibs):
     # print(ut.repr3(depends_cache.__ALGO_REGISTER__))
 
 
-@ibeis.register_preproc('Has_Notch', [ROOT], ['flag'], [bool])
+@register_preproc('Has_Notch', [ROOT], ['flag'], [bool])
 def preproc_has_tips(depc, aid_list, config=None):
     r"""
     HACK TO FIND ONLY ANNTS THAT HAVE TIPS
@@ -256,7 +260,7 @@ if False:
 DEFAULT_NTIP_CONFIG = {}
 
 
-@ibeis.register_preproc('Notch_Tips', [const.CHIP_TABLE], ['notch', 'left', 'right'], [np.ndarray, np.ndarray, np.ndarray])
+@register_preproc('Notch_Tips', [const.CHIP_TABLE], ['notch', 'left', 'right'], [np.ndarray, np.ndarray, np.ndarray])
 def preproc_notch_tips(depc, cid_list, config=None):
     r"""
     Args:
@@ -346,7 +350,7 @@ def preproc_notch_tips(depc, cid_list, config=None):
 DEFAULT_TE_CONFIG = {'n_neighbors': 5}
 
 
-@ibeis.register_preproc('Trailing_Edge', ['Notch_Tips'], ['edge', 'cost'], [np.ndarray, float])
+@register_preproc('Trailing_Edge', ['Notch_Tips'], ['edge', 'cost'], [np.ndarray, float])
 def preproc_trailing_edge(depc, ntid_list, config=None):
     r"""
     Args:
@@ -461,7 +465,7 @@ def preproc_trailing_edge(depc, ntid_list, config=None):
 #                          fixed_coords.shape[0], size, curv)
 
 
-@ibeis.register_preproc('Block_Curvature', ['Trailing_Edge'], ['curvature'], [np.ndarray])
+@register_preproc('Block_Curvature', ['Trailing_Edge'], ['curvature'], [np.ndarray])
 def preproc_block_curvature(depc, te_rowids, config={'sizes': [5, 10, 15, 20]}):
     r"""
     Args:
@@ -524,8 +528,8 @@ DEFAULT_ALGO_CONFIG = {
 }
 
 
-@ibeis.register_algo('BC_DTW', algo_result_class=ibeis.AnnotMatch,
-                     configclass=DEFAULT_ALGO_CONFIG, chunksize=8)
+@register_algo('BC_DTW', algo_result_class=ibeis.AnnotMatch,
+               configclass=DEFAULT_ALGO_CONFIG, chunksize=8)
 def id_algo_bc_dtw(depc, request):
     r"""
     Args:
