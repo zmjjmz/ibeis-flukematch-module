@@ -419,7 +419,8 @@ DEFAULT_ALGO_CONFIG = {
     'verbose': False,
     'decision': 'average',
     'sizes': (5, 10, 15, 20),
-    'weights': None
+    'weights': None,
+    'version':'2',
 }
 
 
