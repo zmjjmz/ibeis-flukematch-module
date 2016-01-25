@@ -75,7 +75,7 @@ extern "C" void block_curvature(float * summed_area_tabv, int binarized_rows, in
 }
 
 float get_te_cost(int row, int col, int i, const MatrixXf & cost, const ExternNDArrayf & gradient_img) {
-    if ((row + i < 0) || (row + i >= cost.rows()) || (col == 0)) {
+    if ((row + i < 0) || (row + i >= cost.rows())) {
         return INFINITY;
     } else {
         return (col == 0 ? 0 : cost(row+i, col-1)) + gradient_img(row, col);
