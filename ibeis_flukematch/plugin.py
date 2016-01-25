@@ -28,6 +28,15 @@ ROOT = ibeis.const.ANNOTATION_TABLE
 
 # register : name, parent(s), cols, dtypes
 
+def overlay_path(img, path):
+    img_copy = img[:]
+    # assume path is x, y
+    for j, i in path:
+        if (j >= img_copy.shape[1] or j < 0) or (i >= img_copy.shape[0] or i < 0):
+                continue
+        cv2.circle(img_copy, (j, i), 2, (255,0,0), thickness=-1)
+        #img_copy[i,j] = [255,0,0]
+    return img_copy
 
 def debug_depcache(ibs):
     r"""
