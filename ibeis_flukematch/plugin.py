@@ -3,7 +3,6 @@
 CommandLine:
     python -m ibeis --tf autogen_ipynb --db humpbacks --ipynb -t default:proot=BC_DTW -a default:has_any=hasnotch
     python -m ibeis --tf autogen_ipynb --db humpbacks --ipynb -t default:proot=BC_DTW default:proot=vsmany -a default:has_any=hasnotch,mingt=2,qindex=0:50 --noexample
-
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
 import ibeis
