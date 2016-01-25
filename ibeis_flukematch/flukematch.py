@@ -157,8 +157,30 @@ if HAS_LIB:
 
 def get_distance_curvweighted(query_curv, db_curv, curv_weights, window=50):
     """
-        >>> window=50
+    Ignore:
+        aid1 = ibs.get_image_aids(ibs.get_valid_gids()[ibs.get_image_gnames(ibs.get_valid_gids()).index('CINMS-20090307-B9984.jpg')])[0]
+        aid2 = ibs.get_image_aids(ibs.get_valid_gids()[ibs.get_image_gnames(ibs.get_valid_gids()).index('CINMS_20100427_A1860.jpg')])[0]
+
+    Example:
+        >>> # DISABLE_DOCTEST
         >>> from ibeis_flukematch.flukematch import *  # NOQA
+        >>> import ibeis
+        >>> #from ibeis_flukematch.plugin import *  # NOQA
+        >>> ibs = ibeis.opendb(defaultdb='humpbacks')
+        >>> all_aids = ibs.get_valid_aids()
+        >>> isvalid = ibs.depc.get_property('Has_Notch', all_aids, 'flag', _debug=True)
+        >>> aid = ut.compress(all_aids, isvalid)[0]
+        >>> aid1 = 2826
+        >>> aid2 = 2827
+        >>> query_curv_nd, db_curv_nd = depc.get_property('Block_Curvature', [aid1, aid2], 'curvature')
+        >>> depc = ibs.depc
+        >>> window = 50
+        >>> sizes = [5, 10, 15, 20]
+        >>> curv_weights_nd = np.array([1.] * len(sizes))
+        >>> get_distance_curvweighted(query_curv_nd, db_curv_nd, curv_weights, window=50)
+        >>> print(curve_arr.shape())
+        >>> print(curve_arr.sum())
+        >>> window=50
     """
     #ordered_sizes = sorted(curv_weights.keys())
     # we just need to stack the curvatures and make sure that the ordering is
@@ -176,7 +198,8 @@ def get_distance_curvweighted(query_curv, db_curv, curv_weights, window=50):
 
     query_len = query_curv_nd.shape[0]
     db_len = db_curv_nd.shape[0]
-    distance_mat = (np.zeros((query_len, db_len), dtype=np.float32) + np.inf)
+    #distance_mat = (np.zeros((query_len, db_len), dtype=np.float32) + np.inf)
+    distance_mat = np.full((query_len, db_len), np.inf, dtype=np.float32)
     distance_mat[0, 0] = 0
     dtw_curvweighted(
         query_curv_nd, db_curv_nd, query_len, db_len, window,

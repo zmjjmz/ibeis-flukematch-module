@@ -28,15 +28,6 @@ ROOT = ibeis.const.ANNOTATION_TABLE
 
 # register : name, parent(s), cols, dtypes
 
-def overlay_path(img, path):
-    img_copy = img[:]
-    # assume path is x, y
-    for j, i in path:
-        if (j >= img_copy.shape[1] or j < 0) or (i >= img_copy.shape[0] or i < 0):
-                continue
-        cv2.circle(img_copy, (j, i), 2, (255,0,0), thickness=-1)
-        #img_copy[i,j] = [255,0,0]
-    return img_copy
 
 def debug_depcache(ibs):
     r"""
@@ -135,142 +126,6 @@ def preproc_has_tips(depc, aid_list, config=None):
             yield (True,)
 
 
-# TODO: depricate old chips with this one in ibeis core
-
-#DEFAULT_CHIP_CONFIG = {
-#    'resize_dim': 'width',
-#    'dim_size': 128,
-#    'preserve_aspect': True,
-#    'ext': '.png'
-#}
-
-
-if False:
-    # Chip has move into ibeis
-    class ChipConfig(dtool.TableConfig):
-        def get_param_info_list(self):
-            return [
-                ut.ParamInfo('resize_dim', 'width',
-                             valid_values=['area', 'width', 'heigh', 'diag'],
-                             hideif=lambda cfg: cfg['dim_size'] is None),
-                #ut.ParamInfo('dim_size', 128, 'sz', hideif=None),
-                ut.ParamInfo('dim_size', 960, 'sz', hideif=None),
-                ut.ParamInfo('preserve_aspect', True, hideif=True),
-                ut.ParamInfo('histeq', False, hideif=False),
-                ut.ParamInfo('ext', '.png'),
-            ]
-
-    @ibeis.register_preproc(
-        const.CHIP_TABLE,
-        parents=[const.ANNOTATION_TABLE],
-        colnames=['img', 'width', 'height', 'M'],
-        coltypes=[('extern', vt.imread), int, int, np.ndarray],
-        configclass=ChipConfig,
-        docstr='Used to store *processed* annots as chips',
-        #fname='chipcache2'
-    )
-    def preproc_chip(depc, aid_list, config=None):
-        r"""
-        Example of using the dependency cache.
-
-        Args:
-            depc (ibeis.depends_cache.DependencyCache):
-            aid_list (list):  list of annotation rowids
-            config2_ (dict): (default = None)
-
-        Yields:
-            (uri, int, int): tup
-
-        CommandLine:
-            python -m ibeis_flukematch.plugin --exec-preproc_chip --show --db humpbacks
-
-        Example:
-            >>> # DISABLE_DOCTEST
-            >>> from ibeis_flukematch.plugin import *  # NOQA
-            >>> import ibeis
-            >>> ibs = ibeis.opendb(defaultdb='testdb1')
-            >>> depc = ibs.depc
-            >>> config = ChipConfig(dim_size=None)
-            >>> aid_list = ibs.get_valid_aids()[0:20]
-            >>> chips = depc.get_property(ibs.const.CHIP_TABLE, aid_list, 'img', config)
-            >>> #procgen = preproc_chip(depc, aid_list, config)
-            >>> #chip_props = list(procgen)
-            >>> #chips = ut.take_column(chip_props, 0)
-            >>> import plottool as pt
-            >>> iteract_obj = pt.interact_multi_image.MultiImageInteraction(chips, nPerPage=4)
-            >>> pt.show_if_requested()
-            >>> #depc[const.CHIP_TABLE].print_csv()
-        """
-        print('Preprocess Chips')
-        print(config)
-
-        ibs = depc.controller
-        chip_dpath = ibs.get_chipdir() + '2'
-        if config is None:
-            config = ChipConfig()
-
-        ut.ensuredir(chip_dpath)
-
-        ext = config['ext']
-
-        cfghashid = config.get_hashid()
-        avuuid_list = ibs.get_annot_visual_uuids(aid_list)
-
-        # TODO: just hash everything together
-        _fmt = 'chip_aid_{aid}_avuuid_{avuuid}_{cfghashid}{ext}'
-        cfname_list = [_fmt.format(aid=aid, avuuid=avuuid, ext=ext, cfghashid=cfghashid)
-                       for aid, avuuid in zip(aid_list, avuuid_list)]
-        cfpath_list = [ut.unixjoin(chip_dpath, chip_fname)
-                       for chip_fname in cfname_list]
-
-        gfpath_list = ibs.get_annot_image_paths(aid_list)
-        bbox_list   = ibs.get_annot_bboxes(aid_list)
-        theta_list  = ibs.get_annot_thetas(aid_list)
-        bbox_size_list = ut.take_column(bbox_list, [2, 3])
-
-        # Checks
-        invalid_flags = [w == 0 or h == 0 for (w, h) in bbox_size_list]
-        invalid_aids = ut.compress(aid_list, invalid_flags)
-        assert len(invalid_aids) == 0, 'invalid aids=%r' % (invalid_aids,)
-
-        dim_size = config['dim_size']
-        resize_dim = config['resize_dim']
-        scale_func_dict = {
-            'width': vt.get_scaled_size_with_width,
-            'root_area': vt.get_scaled_size_with_area,
-        }
-        scale_func = scale_func_dict[resize_dim]
-
-        if dim_size is None:
-            newsize_list = bbox_size_list
-        else:
-            if resize_dim == 'root_area':
-                dim_size = dim_size ** 2
-            newsize_list = [scale_func(dim_size, w, h) for (w, h) in bbox_size_list]
-
-        # Build transformation from image to chip
-        M_list = [vt.get_image_to_chip_transform(bbox, new_size, theta) for
-                  bbox, theta, new_size in zip(bbox_list, theta_list, newsize_list)]
-
-        arg_iter = zip(cfpath_list, gfpath_list, newsize_list, M_list)
-        arg_list = list(arg_iter)
-
-        flags = cv2.INTER_LANCZOS4
-        borderMode = cv2.BORDER_CONSTANT
-        warpkw = dict(flags=flags, borderMode=borderMode)
-
-        for tup in ut.ProgIter(arg_list, lbl='computing chips'):
-            cfpath, gfpath, new_size, M = tup
-            # Read parent image
-            imgBGR = vt.imread(gfpath)
-            # Warp chip
-            chipBGR = cv2.warpAffine(imgBGR, M[0:2], tuple(new_size), **warpkw)
-            height, width = vt.get_size(chipBGR)
-            # Write chip to disk
-            vt.imwrite(cfpath, chipBGR)
-            yield (cfpath, width, height, M)
-
-
 DEFAULT_NTIP_CONFIG = {}
 
 
@@ -361,6 +216,17 @@ def preproc_notch_tips(depc, cid_list, config=None):
                 'ERROR: aid=%r does not have points associated' % (aid,))
 
 
+def overlay_path(img, path, tips=None):
+    img_copy = img[:]
+    # assume path is x, y
+    for j, i in path:
+        if (j >= img_copy.shape[1] or j < 0) or (i >= img_copy.shape[0] or i < 0):
+                continue
+        cv2.circle(img_copy, (j, i), 2, (255, 0, 0), thickness=-1)
+        #img_copy[i,j] = [255,0,0]
+    return img_copy
+
+
 DEFAULT_TE_CONFIG = {'n_neighbors': 5}
 
 
@@ -382,6 +248,8 @@ def preproc_trailing_edge(depc, ntid_list, config=None):
         python -m ibeis_flukematch.plugin --exec-preproc_trailing_edge --db humpbacks --no-cnn --clear-all-depcache
         python -m ibeis_flukematch.plugin --exec-preproc_trailing_edge --db humpbacks --no-cnn
 
+        python -m ibeis_flukematch.plugin --exec-preproc_trailing_edge --db humpbacks --no-cnn --show
+
     Example:
         >>> # DISABLE_DOCTEST
         >>> from ibeis_flukematch.plugin import *  # NOQA
@@ -399,6 +267,16 @@ def preproc_trailing_edge(depc, ntid_list, config=None):
         >>> tedge_list, cost_list = list(zip(*results))
         >>> print('tedge_list = %r' % (tedge_list,))
         >>> print('cost_list = %r' % (cost_list,))
+        >>> ut.quit_if_noshow()
+        >>> # Visualize
+        >>> aid_list = [2826]
+        >>> chipcfg = ibeis.algo.preproc.preproc_chip.ChipConfig(dim_size=None)
+        >>> chips = depc.get_property(ibs.const.CHIP_TABLE, aid_list, 'img', chipcfg)
+        >>> overlay_chips = [overlay_path(chip, path, tips) for chip, path, tips in zip(chips, tedge_list, tips_list)]
+        >>> import plottool as pt
+        >>> iteract_obj = pt.interact_multi_image.MultiImageInteraction(chips, nPerPage=4)
+        >>> pt.show_if_requested()
+
     """
     print('Preprocess Trailing_Edge')
     print(config)
@@ -479,7 +357,9 @@ def preproc_trailing_edge(depc, ntid_list, config=None):
 #                          fixed_coords.shape[0], size, curv)
 
 
-@register_preproc('Block_Curvature', ['Trailing_Edge'], ['curvature'], [np.ndarray])
+@register_preproc('Block_Curvature', ['Trailing_Edge'], ['curvature'], [np.ndarray],
+                  #configclass=..
+                  )
 def preproc_block_curvature(depc, te_rowids, config={'sizes': [5, 10, 15, 20]}):
     r"""
     Args:
@@ -520,6 +400,7 @@ def preproc_block_curvature(depc, te_rowids, config={'sizes': [5, 10, 15, 20]}):
     # get the trailing edges
     # NOTE: Can specify a single column, so unpacking is done automatically
     tedges = ibs.depc.get_native_property('Trailing_Edge', te_rowids, 'edge')
+    # FIXME: CONFIG
     try:
         sizes = config['sizes']
     except KeyError:
