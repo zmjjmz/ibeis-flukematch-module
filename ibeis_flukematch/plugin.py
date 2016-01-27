@@ -151,7 +151,7 @@ def preproc_notch_tips(depc, cid_list, config=None):
         >>> ibs = ibeis.opendb(defaultdb='humpbacks')
         >>> all_aids = ibs.get_valid_aids()
         >>> isvalid = ibs.depc.get_property('Has_Notch', all_aids, 'flag')
-        >>> aid_list = ut.compress(all_aids, isvalid)[0:100]
+        >>> aid_list = ut.compress(all_aids, isvalid)
         >>> config = dict(dim_size=None)
         >>> #config = dict()
         >>> cid_list = ibs.depc.get_rowids(const.CHIP_TABLE, aid_list, config)
@@ -194,8 +194,11 @@ def preproc_notch_tips(depc, cid_list, config=None):
     img_names = ibs.get_annot_image_names(aid_list)
 
     M_list = ibs.depc.get_native_property(const.CHIP_TABLE, cid_list, 'M')
+    size_list = ibs.depc.get_native_property(const.CHIP_TABLE, cid_list, ('width','height'))
 
-    for aid, imgn, M in ut.ProgIter(zip(aid_list, img_names, M_list),
+    inbounds = lambda size, point: (point[0] >= 0 and point[0] < size[0]) and (point[1] >= 0 and point[1] < size[1])
+
+    for aid, imgn, M, size in ut.ProgIter(zip(aid_list, img_names, M_list, size_list),
                                     lbl='Reading Notch_Tips'):
         try:
             # Need to scale notch tips as they are
@@ -203,9 +206,14 @@ def preproc_notch_tips(depc, cid_list, config=None):
             ptdict = img_points_map[imgn]
             notch, left, right = ut.dict_take(ptdict, ['notch', 'left', 'right'])
 
+
+
             notch_ = M[0:2].T.dot(notch)[0:2]
             left_  = M[0:2].T.dot(left)[0:2]
             right_ = M[0:2].T.dot(right)[0:2]
+
+            # verify that the notch / left / right are within the bounds specified by size
+            assert(inbounds(size, notch_) and inbounds(size, left_) and inbounds(size, right_))
 
             yield (notch_, left_, right_)
         except KeyError:
@@ -214,6 +222,13 @@ def preproc_notch_tips(depc, cid_list, config=None):
             # yield None
             raise NotImplementedError(
                 'ERROR: aid=%r does not have points associated' % (aid,))
+        except AssertionError:
+            print(
+                '[fluke-module] ERROR: aid=%r has associated points that are out of bounds' % (aid,))
+            print(
+                '[fluke-module] ERROR: Points: Notch: %s, Left: %s, Right: %s -- Chip Size: %s' % (notch_, left_, right_, size))
+            raise NotImplementedError(
+                'ERROR: aid=%r has associated points that are out of bounds' % (aid,))
 
 
 def overlay_path(img, path, tips=None):
@@ -227,7 +242,7 @@ def overlay_path(img, path, tips=None):
     return img_copy
 
 
-DEFAULT_TE_CONFIG = {'n_neighbors': 5}
+DEFAULT_TE_CONFIG = {'n_neighbors': 5, 'version': 2}
 
 
 @register_preproc('Trailing_Edge', ['Notch_Tips'], ['edge', 'cost'], [np.ndarray, float])
@@ -306,14 +321,15 @@ def preproc_trailing_edge(depc, ntid_list, config=None):
         n_neighbors = 5
     _iter = zip(image_paths, points)
     progiter = ut.ProgIter(_iter, lbl='compute Trailing_Edge')
+    fix_point = lambda point: np.max(np.hstack([np.zeros((2,1),dtype=np.int), (point - 1).reshape(-1,1)]), axis=1)
     for imagen, point_set in progiter:
         img = cv2.imread(imagen)
         img_grey = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
         left, right, notch = point_set[1], point_set[2], point_set[0]
-        left = left.round().astype(np.int64)
-        right = right.round().astype(np.int64)
-        notch = notch.round().astype(np.int64)
+        left = fix_point(left.round().astype(np.int))
+        right = fix_point(right.round().astype(np.int))
+        notch = fix_point(notch.round().astype(np.int))
         # TODO: find_trailing_edge should work to subpixel accuracy
         tedge, cost = find_trailing_edge_cpp(
             img_grey, left, right, notch,
