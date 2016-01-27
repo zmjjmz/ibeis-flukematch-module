@@ -187,7 +187,7 @@ def get_distance_curvweighted(query_curv, db_curv, curv_weights, window=50):
     # consistent w/curv_weights
     #curv_weights_nd = np.array([curv_weights[i]
     #                            for i in ordered_sizes], dtype=np.float32)
-    curv_weights_nd = np.atleast_2d(np.array(curv_weights, dtype=np.float32))
+    curv_weights_nd = np.array(curv_weights, dtype=np.float32).reshape(-1,1)
     curv_weights_nd = np.ascontiguousarray(curv_weights_nd)
     query_curv_nd = query_curv
     db_curv_nd = db_curv
@@ -203,7 +203,7 @@ def get_distance_curvweighted(query_curv, db_curv, curv_weights, window=50):
     distance_mat[0, 0] = 0
     dtw_curvweighted(
         query_curv_nd, db_curv_nd, query_len, db_len, window,
-        curv_weights_nd.shape[1], curv_weights_nd, distance_mat)
+        curv_weights_nd.shape[0], curv_weights_nd, distance_mat)
     distance = distance_mat[-1, -1]
     return distance
 
