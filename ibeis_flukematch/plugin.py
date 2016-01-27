@@ -99,8 +99,8 @@ def preproc_has_tips(depc, aid_list, config=None):
     """
     print('Preprocess Has_Notch')
     print(config)
-    if config is None:
-        config = {}
+    #if config is None:
+    #    config = {}
 
     config = config.copy()
     ibs = depc.controller
@@ -175,8 +175,8 @@ def preproc_notch_tips(depc, cid_list, config=None):
     print('Preprocess Notch_Tips')
     print(config)
 
-    if config is None:
-        config = DEFAULT_NTIP_CONFIG
+    #if config is None:
+    #    config = DEFAULT_NTIP_CONFIG
     config = config.copy()
 
     ibs = depc.controller
@@ -216,7 +216,7 @@ def preproc_notch_tips(depc, cid_list, config=None):
                 'ERROR: aid=%r does not have points associated' % (aid,))
 
 
-def overlay_path(img, path, tips=None):
+def overlay_trailing_edge(img, path, tips=None):
     img_copy = img[:]
     # assume path is x, y
     for j, i in path:
@@ -269,20 +269,22 @@ def preproc_trailing_edge(depc, ntid_list, config=None):
         >>> print('cost_list = %r' % (cost_list,))
         >>> ut.quit_if_noshow()
         >>> # Visualize
-        >>> aid_list = [2826]
-        >>> chipcfg = ibeis.algo.preproc.preproc_chip.ChipConfig(dim_size=None)
+        >>> #aid_list = [2826]
+        >>> #chipcfg = ibeis.algo.preproc.preproc_chip.ChipConfig(dim_size=None)
+        >>> chipcfg = None
         >>> chips = depc.get_property(ibs.const.CHIP_TABLE, aid_list, 'img', chipcfg)
-        >>> overlay_chips = [overlay_path(chip, path, tips) for chip, path, tips in zip(chips, tedge_list, tips_list)]
+        >>> overlay_chips = [overlay_trailing_edge(chip, path) for chip, path in zip(chips, tedge_list)]
         >>> import plottool as pt
-        >>> iteract_obj = pt.interact_multi_image.MultiImageInteraction(chips, nPerPage=4)
+        >>> iteract_obj = pt.interact_multi_image.MultiImageInteraction(overlay_chips, nPerPage=4)
+        >>> iteract_obj.start()
         >>> pt.show_if_requested()
 
     """
     print('Preprocess Trailing_Edge')
     print(config)
 
-    if config is None:
-        config = DEFAULT_TE_CONFIG
+    #if config is None:
+    #    config = DEFAULT_TE_CONFIG
     config = config.copy()
     ibs = depc.controller
     # get the notch / left / right points
@@ -420,11 +422,24 @@ DEFAULT_ALGO_CONFIG = {
     'decision': 'average',
     'sizes': (5, 10, 15, 20),
     'weights': None,
-    'version':'2',
+    'version': '2',
 }
 
 
+class BC_DTW_Request(dtool.AlgoRequest):
+    @ut.accepts_scalar_input
+    def get_fmatch_overlayed_chip(self, aid_list, config=None):
+        # FIXME: THIS STRUCTURE OF TELLING HOW FEATURE
+        # MATCHES SHOULD BE VISUALIZED IS NOT FINAL.
+        depc = self.depc
+        chips = depc.get_property('chips', aid_list, 'img', config=config)
+        tedge_list = depc.get_property('Trailing_Edge', aid_list, 'edge', config=config)
+        overlay_chips = [overlay_trailing_edge(chip, path) for chip, path in zip(chips, tedge_list)]
+        return overlay_chips
+
+
 @register_algo('BC_DTW', algo_result_class=ibeis.AnnotMatch,
+               algo_request_class=BC_DTW_Request,
                configclass=DEFAULT_ALGO_CONFIG, chunksize=8, version=0)
 def id_algo_bc_dtw(depc, request):
     r"""
