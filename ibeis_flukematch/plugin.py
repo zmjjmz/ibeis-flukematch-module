@@ -424,7 +424,7 @@ DEFAULT_ALGO_CONFIG = {
 
 
 @register_algo('BC_DTW', algo_result_class=ibeis.AnnotMatch,
-               configclass=DEFAULT_ALGO_CONFIG, chunksize=8)
+               configclass=DEFAULT_ALGO_CONFIG, chunksize=8, version=0)
 def id_algo_bc_dtw(depc, request):
     r"""
     Args:
