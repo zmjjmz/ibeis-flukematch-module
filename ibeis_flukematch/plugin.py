@@ -152,8 +152,8 @@ def preproc_notch_tips(depc, cid_list, config=None):
         >>> all_aids = ibs.get_valid_aids()
         >>> isvalid = ibs.depc.get_property('Has_Notch', all_aids, 'flag')
         >>> aid_list = ut.compress(all_aids, isvalid)
-        >>> config = dict(dim_size=None)
-        >>> #config = dict()
+        >>> #config = dict(dim_size=None)
+        >>> config = dict()
         >>> cid_list = ibs.depc.get_rowids(const.CHIP_TABLE, aid_list, config)
         >>> propgen = preproc_notch_tips(ibs.depc, cid_list, config)
         >>> notch_tips = list(propgen)
@@ -196,6 +196,7 @@ def preproc_notch_tips(depc, cid_list, config=None):
     M_list = ibs.depc.get_native_property(const.CHIP_TABLE, cid_list, 'M')
     size_list = ibs.depc.get_native_property(const.CHIP_TABLE, cid_list, ('width','height'))
 
+    bound_point = lambda point, size: np.min(np.hstack([np.array(size,dtype=np.int).reshape(-1,1) - 1, (point).reshape(-1,1)]), axis=1)
     inbounds = lambda size, point: (point[0] >= 0 and point[0] < size[0]) and (point[1] >= 0 and point[1] < size[1])
 
     for aid, imgn, M, size in ut.ProgIter(zip(aid_list, img_names, M_list, size_list),
@@ -208,9 +209,9 @@ def preproc_notch_tips(depc, cid_list, config=None):
 
 
 
-            notch_ = M[0:2].T.dot(notch)[0:2]
-            left_  = M[0:2].T.dot(left)[0:2]
-            right_ = M[0:2].T.dot(right)[0:2]
+            notch_ = bound_point(M[0:2].T.dot(notch)[0:2], size)
+            left_  = bound_point(M[0:2].T.dot(left)[0:2], size)
+            right_ = bound_point(M[0:2].T.dot(right)[0:2], size)
 
             # verify that the notch / left / right are within the bounds specified by size
             assert(inbounds(size, notch_) and inbounds(size, left_) and inbounds(size, right_))
@@ -245,7 +246,7 @@ def overlay_trailing_edge(img, path, tips=None):
 DEFAULT_TE_CONFIG = {'n_neighbors': 5, 'version': 2}
 
 
-@register_preproc('Trailing_Edge', ['Notch_Tips'], ['edge', 'cost'], [np.ndarray, float])
+@register_preproc('Trailing_Edge', ['Notch_Tips'], ['edge', 'cost'], [np.ndarray, float], version=4)
 def preproc_trailing_edge(depc, ntid_list, config=None):
     r"""
     Args:
