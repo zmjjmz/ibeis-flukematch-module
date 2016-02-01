@@ -207,20 +207,21 @@ def preproc_notch_tips(depc, cid_list, config=None):
     img_names = ibs.get_annot_image_names(aid_list)
 
     M_list = ibs.depc.get_native_property(const.CHIP_TABLE, cid_list, 'M')
-    size_list = ibs.depc.get_native_property(const.CHIP_TABLE, cid_list, ('width','height'))
+    size_list = ibs.depc.get_native_property(const.CHIP_TABLE, cid_list, ('width', 'height'))
 
-    bound_point = lambda point, size: np.min(np.hstack([np.array(size,dtype=np.int).reshape(-1,1) - 1, (point).reshape(-1,1)]), axis=1)
-    inbounds = lambda size, point: (point[0] >= 0 and point[0] < size[0]) and (point[1] >= 0 and point[1] < size[1])
+    def bound_point(point, size):
+        return np.min(np.hstack([np.array(size, dtype=np.int).reshape(-1, 1) - 1, (point).reshape(-1, 1)]), axis=1)
+
+    def inbounds(size, point):
+        return (point[0] >= 0 and point[0] < size[0]) and (point[1] >= 0 and point[1] < size[1])
 
     for aid, imgn, M, size in ut.ProgIter(zip(aid_list, img_names, M_list, size_list),
-                                    lbl='Reading Notch_Tips'):
+                                          lbl='Reading Notch_Tips'):
         try:
             # Need to scale notch tips as they are
             # specified relative to the image, not the chip.
             ptdict = img_points_map[imgn]
             notch, left, right = ut.dict_take(ptdict, ['notch', 'left', 'right'])
-
-
 
             notch_ = bound_point(M[0:2].T.dot(notch)[0:2], size)
             left_  = bound_point(M[0:2].T.dot(left)[0:2], size)
@@ -267,30 +268,32 @@ class CropChipConfig(dtool.TableConfig):
 def preproc_cropped_chips(depc, cid_list, tipid_list, config=None):
     # crop first
     img_list = depc.get_native_property(const.CHIP_TABLE, cid_list, 'img')
-    tips_list = depc.get_native_property('Notch_Tips', tipid_list, ('left','notch','right'))
-    bound_point = lambda point, size: np.min(np.hstack([np.array(size,dtype=np.int).reshape(-1,1) - 1, (point).reshape(-1,1)]), axis=1)
+    tips_list = depc.get_native_property('Notch_Tips', tipid_list, ('left', 'notch', 'right'))
+    def bound_point(point, size):
+        return np.min(np.hstack([np.array(size, dtype=np.int).reshape(-1, 1) - 1, (point).reshape(-1, 1)]), axis=1)
+
     for img, tips in zip(img_list, tips_list):
         left, notch, right = tips
-        bbox = (0,0,img.shape[1],img.shape[0]) # default to bbox being whole image
+        bbox = (0, 0, img.shape[1], img.shape[0])  # default to bbox being whole image
         chip_size = img.shape[::-1]
         if config['crop_enabled']:
             # figure out bbox (x, y, w, h) w/x, y on top left
             # assume left is on the left note: this may not be a good assumption
-            bbox = (left[0], # leftmost x value
-                    0, # top of the image
-                    (right[0] - left[0]), # width
-                    img.shape[0], # height
-                   )
+            bbox = (left[0],  # leftmost x value
+                    0,  # top of the image
+                    (right[0] - left[0]),  # width
+                    img.shape[0],  # height
+                    )
         if config['crop_dim_size'] is not None:
             # we're only resizing in x, but after the crop
             # as a result we need to make sure we use the image dimensions apparent to get the chip size
             # we want to preserve the aspect ratio of the crop, not the whole image
             new_x = config['crop_dim_size']
-            ratio = bbox[2] / bbox[3] # w/h
+            ratio = bbox[2] / bbox[3]  # w/h
             new_y = int(new_x / ratio)
             chip_size = (new_x, new_y)
         M = vt.get_image_to_chip_transform(bbox, chip_size, 0)
-        new_img = cv2.warpAffine(img, M[:-1,:], chip_size)
+        new_img = cv2.warpAffine(img, M[:-1, :], chip_size)
         notch_ = bound_point(M[0:2].T.dot(notch)[0:2], chip_size)
         left_  = bound_point(M[0:2].T.dot(left)[0:2], chip_size)
         right_ = bound_point(M[0:2].T.dot(right)[0:2], chip_size)
@@ -371,7 +374,7 @@ def preproc_trailing_edge(depc, cpid_list, config=None):
     ibs = depc.controller
     # get the notch / left / right points
     # points = ibs.depc.get_property('Notch_Tips', aid_list)
-    img_paths = ibs.depc.get_native_property('Cropped_Chips', cpid_list, 'img', read_extern=True)
+    img_paths = ibs.depc.get_native_property('Cropped_Chips', cpid_list, 'img', read_extern=False)
     notch_s, left_s, right_s = ibs.depc.get_native_property('Cropped_Chips', cpid_list, ('notch', 'left', 'right'))
     points = zip(notch_s, left_s, right_s)
     # get the actual images
@@ -392,9 +395,12 @@ def preproc_trailing_edge(depc, cpid_list, config=None):
         n_neighbors = 5
     _iter = zip(img_paths, points)
     progiter = ut.ProgIter(_iter, lbl='compute Trailing_Edge')
-    fix_point = lambda point: np.max(np.hstack([np.zeros((2,1),dtype=np.int), (point - 1).reshape(-1,1)]), axis=1)
-    for img, point_set in progiter:
-        #img = cv2.imread(imagen)
+
+    def fix_point(point):
+        return np.max(np.hstack([np.zeros((2, 1), dtype=np.int), (point - 1).reshape(-1, 1)]), axis=1)
+
+    for img_path, point_set in progiter:
+        img = cv2.imread(img_path)
         img_grey = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
         left, right, notch = point_set[1], point_set[2], point_set[0]
