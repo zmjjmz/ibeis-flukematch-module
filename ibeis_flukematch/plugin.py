@@ -237,13 +237,13 @@ class CropChipConfig(dtool.TableConfig):
         return [
             ut.ParamInfo('crop_dim_size', 960, 'sz', hideif=lambda cfg: cfg['crop_enabled'] is False or cfg['crop_dim_size'] is None),
             ut.ParamInfo('crop_enabled', False, hideif=False),
-            ut.ParamInfo('ext', '.png'),
+            #ut.ParamInfo('ext', '.png'),
         ]
 
 
 # NEW CHIP TABLE
 @register_preproc(
-    'cropped_chip',
+    'Cropped_Chips',
     parents=[const.CHIP_TABLE, 'Notch_Tips'],
     colnames=['img', 'width', 'height', 'M', 'notch', 'left', 'right'],
     coltypes=[('extern', vt.imread), int, int, np.ndarray, np.ndarray, np.ndarray, np.ndarray],
@@ -251,8 +251,38 @@ class CropChipConfig(dtool.TableConfig):
     fname='cropped_chip',
     version=0
 )
-def preproc_notch_tips(depc, cid_list, tipid_list, config=None):
-    pass
+def preproc_cropped_chips(depc, cid_list, tipid_list, config=None):
+    # crop first
+    img_list = ibs.depc.get_native_property(const.CHIP_TABLE, cid_list, 'img')
+    tips_list = ibs.depc.get_native_property('Notch_Tips', tipid_list, ('left','notch','right'))
+    bound_point = lambda point, size: np.min(np.hstack([np.array(size,dtype=np.int).reshape(-1,1) - 1, (point).reshape(-1,1)]), axis=1)
+    for img, tips in zip(img_list, tips_list):
+        left, notch, right = tips
+        bbox = (0,0,img.shape[1],img.shape[0]) # default to bbox being whole image
+        chip_size = img.shape[::-1]
+        if config['crop_enabled']:
+            # figure out bbox (x, y, w, h) w/x, y on top left
+            # assume left is on the left note: this may not be a good assumption
+            bbox = (left[0], # leftmost x value
+                    0, # top of the image
+                    (right[0] - left[0]), # width
+                    img.shape[0], # height
+                   )
+        if config['crop_dim_size'] is not None:
+            # we're only resizing in x, but after the crop
+            # as a result we need to make sure we use the image dimensions apparent to get the chip size
+            # we want to preserve the aspect ratio of the crop, not the whole image
+            new_x = config['crop_dim_size']
+            ratio = bbox[2] / bbox[3] # w/h
+            new_y = int(new_x / ratio)
+            chip_size = (new_x, new_y)
+        M = vt.get_image_to_chip_transform(bbox, chip_size, 0)
+        new_img = cv2.warpAffine(img, M[:-1,:], chip_size)
+        notch_ = bound_point(M[0:2].T.dot(notch)[0:2], chip_size)
+        left_  = bound_point(M[0:2].T.dot(left)[0:2], chip_size)
+        right_ = bound_point(M[0:2].T.dot(right)[0:2], chip_size)
+
+        yield (new_img, bbox[2], bbox[3], M, notch_, left_, right_)
 
 
 def overlay_trailing_edge(img, path, tips=None):
@@ -269,7 +299,7 @@ def overlay_trailing_edge(img, path, tips=None):
 DEFAULT_TE_CONFIG = {'n_neighbors': 5, 'version': 2}
 
 
-@register_preproc('Trailing_Edge', ['Notch_Tips'], ['edge', 'cost'], [np.ndarray, float], version=4)
+@register_preproc('Trailing_Edge', ['Cropped_Chips'], ['edge', 'cost'], [np.ndarray, float], version=4)
 def preproc_trailing_edge(depc, ntid_list, config=None):
     r"""
     Args:
