@@ -313,7 +313,7 @@ DEFAULT_TE_CONFIG = {'n_neighbors': 5, 'version': 2}
 
 
 @register_preproc('Trailing_Edge', ['Cropped_Chips'], ['edge', 'cost'], [np.ndarray, float], version=4)
-def preproc_trailing_edge(depc, ntid_list, config=None):
+def preproc_trailing_edge(depc, cpid_list, config=None):
     r"""
     Args:
         depc (DependencyCache):
@@ -354,7 +354,7 @@ def preproc_trailing_edge(depc, ntid_list, config=None):
         >>> #aid_list = [2826]
         >>> #chipcfg = ibeis.algo.preproc.preproc_chip.ChipConfig(dim_size=None)
         >>> chipcfg = None
-        >>> chips = depc.get_property(ibs.const.CHIP_TABLE, aid_list, 'img', chipcfg)
+        >>> chips = depc.get_property('Cropped_Chips', aid_list, 'img', chipcfg)
         >>> overlay_chips = [overlay_trailing_edge(chip, path) for chip, path in zip(chips, tedge_list)]
         >>> import plottool as pt
         >>> iteract_obj = pt.interact_multi_image.MultiImageInteraction(overlay_chips, nPerPage=4)
@@ -371,15 +371,17 @@ def preproc_trailing_edge(depc, ntid_list, config=None):
     ibs = depc.controller
     # get the notch / left / right points
     # points = ibs.depc.get_property('Notch_Tips', aid_list)
-    points = ibs.depc.get_native_property('Notch_Tips', ntid_list)
+    img_paths = ibs.depc.get_native_property('Cropped_Chips', cpid_list, 'img', read_extern=True)
+    notch_s, left_s, right_s = ibs.depc.get_native_property('Cropped_Chips', cpid_list, ('notch', 'left', 'right'))
+    points = zip(notch_s, left_s, right_s)
     # get the actual images
     #aid_list = depc.get_root_rowids('Notch_Tips', ntid_list)
     #image_paths = ibs.get_annot_image_paths(aid_list)
 
-    cid_list = depc.get_ancestor_rowids('Notch_Tips', ntid_list, const.CHIP_TABLE)
+    #cid_list = depc.get_ancestor_rowids('Notch_Tips', cpid_list, const.CHIP_TABLE)
     #image_paths = depc.get_native_property(const.CHIP_TABLE, cid_list, 'img')
-    image_paths = depc.get_native_property(const.CHIP_TABLE, cid_list, 'img',
-                                           read_extern=False)
+    #image_paths = depc.get_native_property(const.CHIP_TABLE, cid_list, 'img',
+    #                                       read_extern=False)
 
     # call flukematch.get_trailing_edge on each image
     try:
@@ -388,11 +390,11 @@ def preproc_trailing_edge(depc, ntid_list, config=None):
         print('[fluke-module] WARNING: Number of neighbors for trailing edge'
               'extraction not provided, defaulting to 5')
         n_neighbors = 5
-    _iter = zip(image_paths, points)
+    _iter = zip(img_paths, points)
     progiter = ut.ProgIter(_iter, lbl='compute Trailing_Edge')
     fix_point = lambda point: np.max(np.hstack([np.zeros((2,1),dtype=np.int), (point - 1).reshape(-1,1)]), axis=1)
-    for imagen, point_set in progiter:
-        img = cv2.imread(imagen)
+    for img, point_set in progiter:
+        #img = cv2.imread(imagen)
         img_grey = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
         left, right, notch = point_set[1], point_set[2], point_set[0]
