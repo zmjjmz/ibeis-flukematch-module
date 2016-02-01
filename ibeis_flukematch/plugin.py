@@ -35,6 +35,9 @@ def debug_depcache(ibs):
         python -m ibeis_flukematch.plugin --exec-debug_depcache
         python -m ibeis_flukematch.plugin --exec-debug_depcache --show --no-cnn
         python -m ibeis_flukematch.plugin --exec-debug_depcache --clear-all-depcache --db humbpacks
+        python -m ibeis_flukematch.plugin --exec-debug_depcache --show --no-cnn --db humpbacks
+
+        python -m ibeis_flukematch.plugin --exec-preproc_notch_tips --db humpbacks --no-cnn --show
 
     Example:
         >>> # SCRIPT
@@ -55,6 +58,15 @@ def debug_depcache(ibs):
         ibs.depc.show_digraph()
     except Exception as ex:
         ut.printex(ex, iswarning=True)
+
+    all_aids = ibs.get_valid_aids()
+    isvalid = ibs.depc.get_property('Has_Notch', all_aids, 'flag')
+    aid_list = ut.compress(all_aids, isvalid)
+    aid_list = aid_list[0:10]
+    ibs.depc.print_config_tables()
+    #import utool
+    #utool.embed()
+
     # from dtool import depends_cache
     # print(ut.repr3(depends_cache.__PREPROC_REGISTER__))
     # print(ut.repr3(depends_cache.__ALGO_REGISTER__))
@@ -152,6 +164,7 @@ def preproc_notch_tips(depc, cid_list, config=None):
         >>> all_aids = ibs.get_valid_aids()
         >>> isvalid = ibs.depc.get_property('Has_Notch', all_aids, 'flag')
         >>> aid_list = ut.compress(all_aids, isvalid)
+        >>> aid_list = aid_list[0:10]
         >>> #config = dict(dim_size=None)
         >>> config = dict()
         >>> cid_list = ibs.depc.get_rowids(const.CHIP_TABLE, aid_list, config)
@@ -253,8 +266,8 @@ class CropChipConfig(dtool.TableConfig):
 )
 def preproc_cropped_chips(depc, cid_list, tipid_list, config=None):
     # crop first
-    img_list = ibs.depc.get_native_property(const.CHIP_TABLE, cid_list, 'img')
-    tips_list = ibs.depc.get_native_property('Notch_Tips', tipid_list, ('left','notch','right'))
+    img_list = depc.get_native_property(const.CHIP_TABLE, cid_list, 'img')
+    tips_list = depc.get_native_property('Notch_Tips', tipid_list, ('left','notch','right'))
     bound_point = lambda point, size: np.min(np.hstack([np.array(size,dtype=np.int).reshape(-1,1) - 1, (point).reshape(-1,1)]), axis=1)
     for img, tips in zip(img_list, tips_list):
         left, notch, right = tips
