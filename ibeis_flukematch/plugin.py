@@ -232,6 +232,29 @@ def preproc_notch_tips(depc, cid_list, config=None):
                 'ERROR: aid=%r has associated points that are out of bounds' % (aid,))
 
 
+class CropChipConfig(dtool.TableConfig):
+    def get_param_info_list(self):
+        return [
+            ut.ParamInfo('crop_dim_size', 960, 'sz', hideif=lambda cfg: cfg['crop_enabled'] is False or cfg['crop_dim_size'] is None),
+            ut.ParamInfo('crop_enabled', False, hideif=False),
+            ut.ParamInfo('ext', '.png'),
+        ]
+
+
+# NEW CHIP TABLE
+@register_preproc(
+    'cropped_chip',
+    parents=[const.CHIP_TABLE, 'Notch_Tips'],
+    colnames=['img', 'width', 'height', 'M', 'notch', 'left', 'right'],
+    coltypes=[('extern', vt.imread), int, int, np.ndarray, np.ndarray, np.ndarray, np.ndarray],
+    configclass=CropChipConfig,
+    fname='cropped_chip',
+    version=0
+)
+def preproc_notch_tips(depc, cid_list, tipid_list, config=None):
+    pass
+
+
 def overlay_trailing_edge(img, path, tips=None):
     img_copy = img[:]
     # assume path is x, y
