@@ -273,7 +273,7 @@ class CropChipConfig(dtool.TableConfig):
     coltypes=[('extern', vt.imread), int, int, np.ndarray, np.ndarray, np.ndarray, np.ndarray],
     configclass=CropChipConfig,
     fname='cropped_chip',
-    version=1,
+    version=3,
 )
 def preproc_cropped_chips(depc, cid_list, tipid_list, config=None):
     """
@@ -287,6 +287,8 @@ def preproc_cropped_chips(depc, cid_list, tipid_list, config=None):
         >>> config = CropChipConfig(crop_enabled=True)
         >>> cid_list = ibs.depc.get_rowids('chips', aid_list, config)
         >>> tipid_list = ibs.depc.get_rowids('Notch_Tips', aid_list, config)
+        >>> depc = ibs.depc
+        >>> list(preproc_cropped_chips(depc, cid_list, tipid_list, config))
         >>> #cpid_list = ibs.depc.d.get_Cropped_Chips_rowids(aid_list, config)
         >>> #cpid_list = ibs.depc.w.Cropped_Chips.get_rowids(aid_list, config)
         >>> chip_list = ibs.depc.get_property('Cropped_Chips', aid_list, 'img', config)
@@ -334,14 +336,19 @@ def preproc_cropped_chips(depc, cid_list, tipid_list, config=None):
             # as a result we need to make sure we use the image dimensions apparent to get the chip size
             # we want to preserve the aspect ratio of the crop, not the whole image
             new_x = config['crop_dim_size']
-            ratio = bbox[2] / bbox[3]  # w/h
-            new_y = int(new_x / ratio)
-            chip_size = (new_x, new_y)
+            #ratio = bbox[2] / bbox[3]  # w/h
+            #new_y = int(new_x / ratio)
+            #chip_size = (new_x, new_y)
+            chip_size = vt.get_scaled_size_with_width(new_x, bbox[2], bbox[3])
+
         M = vt.get_image_to_chip_transform(bbox, chip_size, 0)
         new_img = cv2.warpAffine(img, M[:-1, :], chip_size)
-        notch_ = bound_point(M[0:2].T.dot(notch)[0:2], chip_size)
-        left_  = bound_point(M[0:2].T.dot(left)[0:2], chip_size)
-        right_ = bound_point(M[0:2].T.dot(right)[0:2], chip_size)
+
+        notch_, left_, right_ = vt.transform_points_with_homography(M, np.array([notch, left, right]).T).T
+
+        notch_ = bound_point(notch_, chip_size)
+        left_  = bound_point(left_, chip_size)
+        right_ = bound_point(right_, chip_size)
         vt.imwrite(path, new_img)
 
         yield (path, bbox[2], bbox[3], M, notch_, left_, right_)
@@ -361,7 +368,7 @@ def overlay_trailing_edge(img, path, tips=None):
 DEFAULT_TE_CONFIG = {'n_neighbors': 5, 'version': 2}
 
 
-@register_preproc('Trailing_Edge', ['Cropped_Chips'], ['edge', 'cost'], [np.ndarray, float], version=4)
+@register_preproc('Trailing_Edge', ['Cropped_Chips'], ['edge', 'cost'], [np.ndarray, float], version=7)
 def preproc_trailing_edge(depc, cpid_list, config=None):
     r"""
     Args:
@@ -390,10 +397,9 @@ def preproc_trailing_edge(depc, cpid_list, config=None):
         >>> aid_list = ut.compress(all_aids, isvalid)[0:10]
         >>> print('aid_list = %r' % (aid_list,))
         >>> depc = ibs.depc
-        >>> config = {'n_neighbors': 5}
-        >>> ntid_list = ibs.depc.get_rowids('Notch_Tips', aid_list)
-        >>> print('ntid_list = %r' % (ntid_list,))
-        >>> propgen = preproc_trailing_edge(depc, ntid_list, config)
+        >>> config = {'n_neighbors': 5, 'crop_enabled': True}
+        >>> cpid_list = ibs.depc.get_rowids('Cropped_Chips', aid_list, config)
+        >>> propgen = preproc_trailing_edge(depc, cpid_list, config)
         >>> results = list(propgen)
         >>> tedge_list, cost_list = list(zip(*results))
         >>> print('tedge_list = %r' % (tedge_list,))
@@ -402,8 +408,7 @@ def preproc_trailing_edge(depc, cpid_list, config=None):
         >>> # Visualize
         >>> #aid_list = [2826]
         >>> #chipcfg = ibeis.algo.preproc.preproc_chip.ChipConfig(dim_size=None)
-        >>> chipcfg = None
-        >>> chips = depc.get_property('Cropped_Chips', aid_list, 'img', chipcfg)
+        >>> chips = depc.get_property('Cropped_Chips', aid_list, 'img', config=config, _debug=True)
         >>> overlay_chips = [overlay_trailing_edge(chip, path) for chip, path in zip(chips, tedge_list)]
         >>> import plottool as pt
         >>> iteract_obj = pt.interact_multi_image.MultiImageInteraction(overlay_chips, nPerPage=4)
@@ -420,7 +425,7 @@ def preproc_trailing_edge(depc, cpid_list, config=None):
     ibs = depc.controller
     # get the notch / left / right points
     # points = ibs.depc.get_property('Notch_Tips', aid_list)
-    img_paths = ibs.depc.get_native_property('Cropped_Chips', cpid_list, ('img',), read_extern=False)
+    img_paths = ibs.depc.get_native_property('Cropped_Chips', cpid_list, 'img', read_extern=False)
     points = ibs.depc.get_native_property('Cropped_Chips', cpid_list, ('notch', 'left', 'right'))
     # get the actual images
     #aid_list = depc.get_root_rowids('Notch_Tips', ntid_list)
