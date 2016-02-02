@@ -375,8 +375,7 @@ def preproc_trailing_edge(depc, cpid_list, config=None):
     # get the notch / left / right points
     # points = ibs.depc.get_property('Notch_Tips', aid_list)
     img_paths = ibs.depc.get_native_property('Cropped_Chips', cpid_list, 'img', read_extern=False)
-    notch_s, left_s, right_s = ibs.depc.get_native_property('Cropped_Chips', cpid_list, ('notch', 'left', 'right'))
-    points = zip(notch_s, left_s, right_s)
+    points = ibs.depc.get_native_property('Cropped_Chips', cpid_list, ('notch', 'left', 'right'))
     # get the actual images
     #aid_list = depc.get_root_rowids('Notch_Tips', ntid_list)
     #image_paths = ibs.get_annot_image_paths(aid_list)
