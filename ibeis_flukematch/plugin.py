@@ -154,8 +154,15 @@ def preproc_has_tips(depc, aid_list, config=None):
 
 DEFAULT_NTIP_CONFIG = {}
 
+class NotchTipConfig(dtool.TableConfig):
+    def get_param_info_list(self):
+        return [
+            ut.ParamInfo('manual_extract', False, hideif=False),
+        ]
 
-@register_preproc('Notch_Tips', [const.CHIP_TABLE], ['notch', 'left', 'right'], [np.ndarray, np.ndarray, np.ndarray])
+
+@register_preproc('Notch_Tips', [const.CHIP_TABLE], ['notch', 'left', 'right'], [np.ndarray, np.ndarray, np.ndarray],
+                    configclass=NotchTipConfig)
 def preproc_notch_tips(depc, cid_list, config=None):
     r"""
     Args:
@@ -361,8 +368,16 @@ def overlay_trailing_edge(img, path, tips=None):
 
 DEFAULT_TE_CONFIG = {'n_neighbors': 5}
 
+class TrailingEdgeConfig(dtool.TableConfig):
+    def get_param_info_list(self):
+        return [
+            ut.ParamInfo('n_neighbors', 5, 'n_nb'),
+        ]
 
-@register_preproc('Trailing_Edge', ['Cropped_Chips'], ['edge', 'cost'], [np.ndarray, float], version=7)
+
+
+@register_preproc('Trailing_Edge', ['Cropped_Chips'], ['edge', 'cost'], [np.ndarray, float],
+                    configclass=TrailingEdgeConfig, version=7)
 def preproc_trailing_edge(depc, cpid_list, config=None):
     r"""
     Args:
@@ -491,9 +506,16 @@ def preproc_trailing_edge(depc, cpid_list, config=None):
 #                          summed_table.shape[1], fixed_coords,
 #                          fixed_coords.shape[0], size, curv)
 
+class BlockCurvConfig(dtool.TableConfig):
+    def get_param_info_list(self):
+        return [
+            ut.ParamInfo('sizes', (5, 10, 15, 20)),
+        ]
+
+
 
 @register_preproc('Block_Curvature', ['Trailing_Edge'], ['curvature'], [np.ndarray],
-                  #configclass=..
+                  configclass=BlockCurvConfig
                   )
 def preproc_block_curvature(depc, te_rowids, config={'sizes': [5, 10, 15, 20]}):
     r"""
@@ -578,7 +600,10 @@ class BC_DTW_Config(dtool.AlgoConfig):
         return [
             # I guess different annots might want different configs ...
             #DEFAULT_TE_CONFIG,
+            NotchTipConfig,
             CropChipConfig,
+            TrailingEdgeConfig,
+            BlockCurvConfig,
             #DEFAULT_NTIP_CONFIG,
         ]
 
@@ -588,7 +613,7 @@ class BC_DTW_Config(dtool.AlgoConfig):
             # should this be the only thing here?
             #ut.ParamInfo('daids', None),
             ut.ParamInfo('decision', 'average'),
-            ut.ParamInfo('sizes', (5, 10, 15, 20)),
+            #ut.ParamInfo('sizes', (5, 10, 15, 20)),
             ut.ParamInfo('weights', None),
             ut.ParamInfo('version', '2'),
         ]
