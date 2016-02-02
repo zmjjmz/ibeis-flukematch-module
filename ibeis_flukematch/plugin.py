@@ -633,8 +633,9 @@ def id_algo_bc_dtw(depc, request):
 
     CommandLine:
         python -m ibeis_flukematch.plugin --exec-id_algo_bc_dtw --show
+
         ibeis -e rank_cdf --db humpbacks -t default:pipeline_root=BC_DTW --qaid-override=1,9,15,16,18 --daid-override=1,9,15,16,18,21,22  --show --clear-all-depcache --nocache
-        ibeis -e rank_cdf --db humpbacks -t default:pipeline_root=BC_DTW --qaid-override=1 --daid-override=1,9,15  --show --clear-all-depcache --nocache  --debug-depc
+        ibeis -e rank_cdf --db humpbacks -t default:pipeline_root=BC_DTW,crop_enabled=True --qaid-override=1 --daid-override=1,9,15  --show --clear-all-depcache --nocache  --debug-depc
         ibeis -e rank_cdf --db humpbacks -t default:pipeline_root=BC_DTW -a timectrl:has_any=hasnotch --show --nocache
 
         ibeis -e rank_cdf --db humpbacks -a timectrl:has_any=hasnotch -t default:pipeline_root=BC_DTW --show
@@ -649,11 +650,11 @@ def id_algo_bc_dtw(depc, request):
         >>> isvalid = ibs.depc.get_property('Has_Notch', all_aids, 'flag')
         >>> aid_list = ut.compress(all_aids, isvalid)
         >>> depc = ibs.depc
-        >>> qaids = aid_list[0:100]
-        >>> daids = aid_list[0:100]
+        >>> qaids = aid_list[0:10]
+        >>> daids = aid_list[0:10]
         >>> #qaids = aid_list
         >>> #daids = aid_list
-        >>> cfgdict = {'weights': None, 'decision': 'average', 'sizes': (5, 10, 15, 20)}
+        >>> cfgdict = {'weights': None, 'decision': 'average', 'sizes': (5, 10, 15, 20), 'crop_enabled': True}
         >>> algoname = 'BC_DTW'
         >>> request = depc.new_algo_request(algoname, qaids, daids, cfgdict)
         >>> # Execute function
