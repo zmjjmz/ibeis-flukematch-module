@@ -634,6 +634,7 @@ def id_algo_bc_dtw(depc, request):
     CommandLine:
         python -m ibeis_flukematch.plugin --exec-id_algo_bc_dtw --show
         ibeis -e rank_cdf --db humpbacks -t default:pipeline_root=BC_DTW --qaid-override=1,9,15,16,18 --daid-override=1,9,15,16,18,21,22  --show --clear-all-depcache --nocache
+        ibeis -e rank_cdf --db humpbacks -t default:pipeline_root=BC_DTW --qaid-override=1 --daid-override=1,9,15  --show --clear-all-depcache --nocache  --debug-depc
         ibeis -e rank_cdf --db humpbacks -t default:pipeline_root=BC_DTW -a timectrl:has_any=hasnotch --show --nocache
 
         ibeis -e rank_cdf --db humpbacks -a timectrl:has_any=hasnotch -t default:pipeline_root=BC_DTW --show
@@ -685,11 +686,11 @@ def id_algo_bc_dtw(depc, request):
     ibs = depc.controller
 
     # Get block curvatures
-    block_config = config.block_curv_cfg
+    #block_config = config.block_curv_cfg
     query_curvs = depc.get_property(
-        'Block_Curvature', qaid_list, 'curvature', config=block_config)
+        'Block_Curvature', qaid_list, 'curvature', config=config)
     db_curvs = depc.get_property(
-        'Block_Curvature', daid_list, 'curvature', config=block_config)
+        'Block_Curvature', daid_list, 'curvature', config=config)
 
     qnid_list = ibs.get_annot_nids(qaid_list)
     dnid_list = ibs.get_annot_nids(daid_list)
