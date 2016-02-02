@@ -575,8 +575,11 @@ class BC_DTW_Config(dtool.AlgoConfig):
         >>> config = BC_DTW_Config()
         >>> result = config.get_cfgstr()
         >>> print(result)
-        BC_DTW_(decision=average,sizes=(5, 10, 15, 20),weights=None,version=2)_CropChip()
+        BC_DTW(decision=average,sizes=(5, 10, 15, 20),weights=None,version=2)_CropChip()
     """
+    def get_config_name(self):
+        return 'BC_DTW'
+
     def get_sub_config_list(self):
         # Different pipeline compoments can go here
         # as well as dependencies that were not
@@ -672,17 +675,17 @@ def id_algo_bc_dtw(depc, request):
     config = request.config
 
     #assert(config['daid_list'] is not None)
+
     curv_weights = config['weights']
-    sizes = config['sizes']
+    sizes = config.block_curv_cfg['sizes']
     if curv_weights is not None:
         assert(len(curv_weights) == len(sizes))
     else:
         curv_weights = [1.] * len(sizes)
-
     ibs = depc.controller
-    block_config = ut.dict_subset(config, ['sizes'])
 
-    #block_config['dim_size'] = 256
+    # Get block curvatures
+    block_config = config.block_curv_cfg
     query_curvs = depc.get_property(
         'Block_Curvature', qaid_list, 'curvature', config=block_config)
     db_curvs = depc.get_property(
