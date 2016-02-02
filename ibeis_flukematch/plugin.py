@@ -39,6 +39,11 @@ def testdata_humpbacks():
     return ibs, aid_list
 
 
+def bound_point(point, size):
+    return np.min(np.hstack([np.array(size, dtype=np.int).reshape(-1, 1) - 1,
+                             point.reshape(-1, 1)]), axis=1)
+
+
 def debug_depcache(ibs):
     r"""
     CommandLine:
@@ -76,7 +81,6 @@ def debug_depcache(ibs):
     ibs.depc.print_config_tables()
     #import utool
     #utool.embed()
-
     # from dtool import depends_cache
     # print(ut.repr3(depends_cache.__PREPROC_REGISTER__))
     # print(ut.repr3(depends_cache.__ALGO_REGISTER__))
@@ -85,7 +89,7 @@ def debug_depcache(ibs):
 @register_preproc('Has_Notch', [ROOT], ['flag'], [bool])
 def preproc_has_tips(depc, aid_list, config=None):
     r"""
-    HACK TO FIND ONLY ANNTS THAT HAVE TIPS
+    HACK TO FIND ONLY ANNOTS THAT HAVE TIPS
 
     Args:
         depc (DependencyCache):
@@ -198,8 +202,6 @@ def preproc_notch_tips(depc, cid_list, config=None):
     print('Preprocess Notch_Tips')
     print(config)
 
-    #if config is None:
-    #    config = DEFAULT_NTIP_CONFIG
     config = config.copy()
 
     ibs = depc.controller
@@ -218,9 +220,6 @@ def preproc_notch_tips(depc, cid_list, config=None):
 
     M_list = ibs.depc.get_native_property(const.CHIP_TABLE, cid_list, 'M')
     size_list = ibs.depc.get_native_property(const.CHIP_TABLE, cid_list, ('width', 'height'))
-
-    def bound_point(point, size):
-        return np.min(np.hstack([np.array(size, dtype=np.int).reshape(-1, 1) - 1, (point).reshape(-1, 1)]), axis=1)
 
     def inbounds(size, point):
         return (point[0] >= 0 and point[0] < size[0]) and (point[1] >= 0 and point[1] < size[1])
@@ -261,11 +260,10 @@ class CropChipConfig(dtool.TableConfig):
         return [
             ut.ParamInfo('crop_dim_size', 960, 'sz', hideif=lambda cfg: cfg['crop_enabled'] is False or cfg['crop_dim_size'] is None),
             ut.ParamInfo('crop_enabled', False, hideif=False),
-            #ut.ParamInfo('ext', '.png'),
         ]
 
 
-# NEW CHIP TABLE
+# Custom chip table
 @register_preproc(
     'Cropped_Chips',
     parents=[const.CHIP_TABLE, 'Notch_Tips'],
@@ -306,10 +304,6 @@ def preproc_cropped_chips(depc, cid_list, tipid_list, config=None):
     # crop first
     img_list = depc.get_native_property(const.CHIP_TABLE, cid_list, 'img')
     tips_list = depc.get_native_property('Notch_Tips', tipid_list, ('left', 'notch', 'right'))
-    def bound_point(point, size):
-        return np.min(np.hstack([
-            np.array(size, dtype=np.int).reshape(-1, 1) - 1,
-            point.reshape(-1, 1)]), axis=1)
 
     imgpath_list = depc.get_native_property(const.CHIP_TABLE, cid_list, 'img',
                                             read_extern=False)
@@ -365,7 +359,7 @@ def overlay_trailing_edge(img, path, tips=None):
     return img_copy
 
 
-DEFAULT_TE_CONFIG = {'n_neighbors': 5, 'version': 2}
+DEFAULT_TE_CONFIG = {'n_neighbors': 5}
 
 
 @register_preproc('Trailing_Edge', ['Cropped_Chips'], ['edge', 'cost'], [np.ndarray, float], version=7)
@@ -419,8 +413,6 @@ def preproc_trailing_edge(depc, cpid_list, config=None):
     print('Preprocess Trailing_Edge')
     print(config)
 
-    #if config is None:
-    #    config = DEFAULT_TE_CONFIG
     config = config.copy()
     ibs = depc.controller
     # get the notch / left / right points
@@ -558,13 +550,48 @@ def preproc_block_curvature(depc, te_rowids, config={'sizes': [5, 10, 15, 20]}):
         yield (curve_arr,)
 
 
-DEFAULT_ALGO_CONFIG = {
-    'verbose': False,
-    'decision': 'average',
-    'sizes': (5, 10, 15, 20),
-    'weights': None,
-    'version': '2',
-}
+#DEFAULT_ALGO_CONFIG = {
+#    'verbose': False,
+#    'decision': 'average',
+#    'sizes': (5, 10, 15, 20),
+#    'weights': None,
+#    'version': '2',
+#}
+
+class BC_DTW_Config(dtool.AlgoConfig):
+    """
+    CommandLine:
+        python -m ibeis_flukematch.plugin --exec-ibeis_flukematch.plugin.BC_DTW_Config --show
+
+    Example:
+        >>> # ENABLE_DOCTEST
+        >>> from ibeis_flukematch.plugin import *  # NOQA
+        >>> config = BC_DTW_Config()
+        >>> result = config.get_cfgstr()
+        >>> print(result)
+        BC_DTW_(decision=average,sizes=(5, 10, 15, 20),weights=None,version=2)_CropChip()
+    """
+    def get_sub_config_list(self):
+        # Different pipeline compoments can go here
+        # as well as dependencies that were not
+        # explicitly enumerated in the tree structure
+        return [
+            # I guess different annots might want different configs ...
+            #DEFAULT_TE_CONFIG,
+            CropChipConfig,
+            #DEFAULT_NTIP_CONFIG,
+        ]
+
+    def get_param_info_list(self):
+        return [
+            #ut.ParamInfo('score_method', 'csum'),
+            # should this be the only thing here?
+            #ut.ParamInfo('daids', None),
+            ut.ParamInfo('decision', 'average'),
+            ut.ParamInfo('sizes', (5, 10, 15, 20)),
+            ut.ParamInfo('weights', None),
+            ut.ParamInfo('version', '2'),
+        ]
 
 
 class BC_DTW_Request(dtool.AlgoRequest):
@@ -573,7 +600,8 @@ class BC_DTW_Request(dtool.AlgoRequest):
         # FIXME: THIS STRUCTURE OF TELLING HOW FEATURE
         # MATCHES SHOULD BE VISUALIZED IS NOT FINAL.
         depc = self.depc
-        chips = depc.get_property('chips', aid_list, 'img', config=config)
+        #chips = depc.get_property('chips', aid_list, 'img', config=config)
+        chips = depc.get_property('Cropped_Chips', aid_list, 'img', config=config)
         tedge_list = depc.get_property('Trailing_Edge', aid_list, 'edge', config=config)
         overlay_chips = [overlay_trailing_edge(chip, path) for chip, path in zip(chips, tedge_list)]
         return overlay_chips
@@ -581,7 +609,9 @@ class BC_DTW_Request(dtool.AlgoRequest):
 
 @register_algo('BC_DTW', algo_result_class=ibeis.AnnotMatch,
                algo_request_class=BC_DTW_Request,
-               configclass=DEFAULT_ALGO_CONFIG, chunksize=8, version=0)
+               #configclass=DEFAULT_ALGO_CONFIG,
+               configclass=BC_DTW_Config,
+               chunksize=8, version=0)
 def id_algo_bc_dtw(depc, request):
     r"""
     Args:
@@ -637,9 +667,6 @@ def id_algo_bc_dtw(depc, request):
     qaid_list = request.qaids
     daid_list = request.daids
     config = request.config
-
-    #if config is None:
-    #    config = DEFAULT_ALGO_CONFIG
 
     #assert(config['daid_list'] is not None)
     curv_weights = config['weights']
