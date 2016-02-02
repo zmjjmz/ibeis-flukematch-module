@@ -118,15 +118,11 @@ def preproc_has_tips(depc, aid_list, config=None):
         >>> num_with = sum(hasnotch_list)
         >>> valid_aids = ut.compress(aid_list, hasnotch_list)
         >>> ibs.append_annot_case_tags(valid_aids, ['hasnotch'] * len(valid_aids))
-        >>> #ibs.set_annot_prop('hasnotch', valid_aids, [True] * len(valid_aids))
-        >>> #ibs.set_annot_prop('hasnotch', valid_aids, [False] * len(valid_aids))
         >>> print(ibs.get_annot_info(valid_aids[2], default=True))
         >>> print('%r / %r annots have notches' % (num_with, len(aid_list)))
     """
     print('Preprocess Has_Notch')
     print(config)
-    #if config is None:
-    #    config = {}
 
     config = config.copy()
     ibs = depc.controller
@@ -136,8 +132,7 @@ def preproc_has_tips(depc, aid_list, config=None):
         raise NotImplementedError('Could not find image points file')
 
     with open(fn, 'r') as f:
-        # this is a dict of img: dict of left/right/notch to the corresponding
-        # point
+        # this is a dict of img: dict of left/right/notch to the xy-point
         img_points_map = pickle.load(f)
 
     img_names = ibs.get_annot_image_names(aid_list)
@@ -151,8 +146,6 @@ def preproc_has_tips(depc, aid_list, config=None):
         else:
             yield (True,)
 
-
-DEFAULT_NTIP_CONFIG = {}
 
 class NotchTipConfig(dtool.TableConfig):
     def get_param_info_list(self):
@@ -366,14 +359,11 @@ def overlay_trailing_edge(img, path, tips=None):
     return img_copy
 
 
-DEFAULT_TE_CONFIG = {'n_neighbors': 5}
-
 class TrailingEdgeConfig(dtool.TableConfig):
     def get_param_info_list(self):
         return [
             ut.ParamInfo('n_neighbors', 5, 'n_nb'),
         ]
-
 
 
 @register_preproc('Trailing_Edge', ['Cropped_Chips'], ['edge', 'cost'], [np.ndarray, float],
@@ -513,7 +503,6 @@ class BlockCurvConfig(dtool.TableConfig):
         ]
 
 
-
 @register_preproc('Block_Curvature', ['Trailing_Edge'], ['curvature'], [np.ndarray],
                   configclass=BlockCurvConfig
                   )
@@ -572,18 +561,13 @@ def preproc_block_curvature(depc, te_rowids, config={'sizes': [5, 10, 15, 20]}):
         yield (curve_arr,)
 
 
-#DEFAULT_ALGO_CONFIG = {
-#    'verbose': False,
-#    'decision': 'average',
-#    'sizes': (5, 10, 15, 20),
-#    'weights': None,
-#    'version': '2',
-#}
-
 class BC_DTW_Config(dtool.AlgoConfig):
     """
     CommandLine:
-        python -m ibeis_flukematch.plugin --exec-ibeis_flukematch.plugin.BC_DTW_Config --show
+        python -m ibeis_flukematch.plugin --exec-BC_DTW_Config --show
+
+    IPython:
+        ut.execute_doctest('BC_DTW_Config', module='ibeis_flukematch.plugin')
 
     Example:
         >>> # ENABLE_DOCTEST
@@ -599,12 +583,10 @@ class BC_DTW_Config(dtool.AlgoConfig):
         # explicitly enumerated in the tree structure
         return [
             # I guess different annots might want different configs ...
-            #DEFAULT_TE_CONFIG,
             NotchTipConfig,
             CropChipConfig,
             TrailingEdgeConfig,
             BlockCurvConfig,
-            #DEFAULT_NTIP_CONFIG,
         ]
 
     def get_param_info_list(self):
@@ -615,7 +597,6 @@ class BC_DTW_Config(dtool.AlgoConfig):
             ut.ParamInfo('decision', 'average'),
             #ut.ParamInfo('sizes', (5, 10, 15, 20)),
             ut.ParamInfo('weights', None),
-            ut.ParamInfo('version', '2'),
         ]
 
 
@@ -642,9 +623,7 @@ def id_algo_bc_dtw(depc, request):
     Args:
         depc (DependencyCache):
         qaid_list (list):
-        config (dict): (default = {'weights': None,
-            'decision': <function average at 0x7ff71b2bd7d0>, 'daid_list':
-                None, 'verbose': False, 'sizes': [5, 10, 15, 20]})
+        config (BC_DTW_Config):
 
     Yields:
         ibeis.AnnotMatch:
@@ -670,8 +649,7 @@ def id_algo_bc_dtw(depc, request):
         >>> daids = aid_list[0:100]
         >>> #qaids = aid_list
         >>> #daids = aid_list
-        >>> cfgdict = {'weights': None, 'decision': 'average',
-        >>>           'verbose': True, 'sizes': (5, 10, 15, 20)}
+        >>> cfgdict = {'weights': None, 'decision': 'average', 'sizes': (5, 10, 15, 20)}
         >>> algoname = 'BC_DTW'
         >>> request = depc.new_algo_request(algoname, qaids, daids, cfgdict)
         >>> # Execute function
