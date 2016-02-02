@@ -29,6 +29,16 @@ ROOT = ibeis.const.ANNOTATION_TABLE
 # register : name, parent(s), cols, dtypes
 
 
+def testdata_humpbacks():
+    import ibeis
+    ibs = ibeis.opendb(defaultdb='humpbacks')
+    all_aids = ibs.get_valid_aids()
+    isvalid = ibs.depc.get_property('Has_Notch', all_aids, 'flag')
+    aid_list = ut.compress(all_aids, isvalid)
+    aid_list = aid_list[0:10]
+    return ibs, aid_list
+
+
 def debug_depcache(ibs):
     r"""
     CommandLine:
@@ -263,16 +273,51 @@ class CropChipConfig(dtool.TableConfig):
     coltypes=[('extern', vt.imread), int, int, np.ndarray, np.ndarray, np.ndarray, np.ndarray],
     configclass=CropChipConfig,
     fname='cropped_chip',
-    version=0
+    version=1,
 )
 def preproc_cropped_chips(depc, cid_list, tipid_list, config=None):
+    """
+    CommandLine:
+        python -m ibeis_flukematch.plugin --exec-preproc_cropped_chips --show
+
+    Example:
+        >>> # DISABLE_DOCTEST
+        >>> from ibeis_flukematch.plugin import *  # NOQA
+        >>> ibs, aid_list = testdata_humpbacks()
+        >>> config = CropChipConfig(crop_enabled=True)
+        >>> cid_list = ibs.depc.get_rowids('chips', aid_list, config)
+        >>> tipid_list = ibs.depc.get_rowids('Notch_Tips', aid_list, config)
+        >>> #cpid_list = ibs.depc.d.get_Cropped_Chips_rowids(aid_list, config)
+        >>> #cpid_list = ibs.depc.w.Cropped_Chips.get_rowids(aid_list, config)
+        >>> chip_list = ibs.depc.get_property('Cropped_Chips', aid_list, 'img', config)
+        >>> notch_tips = ibs.depc.get_property('Cropped_Chips', aid_list, ('notch', 'left', 'right'), config)
+        >>> import plottool as pt
+        >>> ut.ensure_pylab_qt4()
+        >>> for notch, chip in ut.InteractiveIter(zip(notch_tips, chip_list)):
+        >>>     pt.reset()
+        >>>     pt.imshow(chip)
+        >>>     kpts_ = np.array(notch)
+        >>>     pt.draw_kpts2(kpts_, pts=True, ell=False, pts_size=20)
+        >>>     pt.update()
+        >>> ut.show_if_requested()
+    """
     # crop first
     img_list = depc.get_native_property(const.CHIP_TABLE, cid_list, 'img')
     tips_list = depc.get_native_property('Notch_Tips', tipid_list, ('left', 'notch', 'right'))
     def bound_point(point, size):
-        return np.min(np.hstack([np.array(size, dtype=np.int).reshape(-1, 1) - 1, (point).reshape(-1, 1)]), axis=1)
+        return np.min(np.hstack([
+            np.array(size, dtype=np.int).reshape(-1, 1) - 1,
+            point.reshape(-1, 1)]), axis=1)
 
-    for img, tips in zip(img_list, tips_list):
+    imgpath_list = depc.get_native_property(const.CHIP_TABLE, cid_list, 'img',
+                                            read_extern=False)
+
+    cropped_chip_dpath = depc.controller.get_chipdir() + '_crop'
+    ut.ensuredir(cropped_chip_dpath)
+    crop_path_list = [ut.augpath(path, '_crop' + config.get_hashid())
+                      for path in imgpath_list]
+
+    for img, tips, path in zip(img_list, tips_list, crop_path_list):
         left, notch, right = tips
         bbox = (0, 0, img.shape[1], img.shape[0])  # default to bbox being whole image
         chip_size = img.shape[::-1]
@@ -297,8 +342,9 @@ def preproc_cropped_chips(depc, cid_list, tipid_list, config=None):
         notch_ = bound_point(M[0:2].T.dot(notch)[0:2], chip_size)
         left_  = bound_point(M[0:2].T.dot(left)[0:2], chip_size)
         right_ = bound_point(M[0:2].T.dot(right)[0:2], chip_size)
+        vt.imwrite(path, new_img)
 
-        yield (new_img, bbox[2], bbox[3], M, notch_, left_, right_)
+        yield (path, bbox[2], bbox[3], M, notch_, left_, right_)
 
 
 def overlay_trailing_edge(img, path, tips=None):
@@ -374,7 +420,7 @@ def preproc_trailing_edge(depc, cpid_list, config=None):
     ibs = depc.controller
     # get the notch / left / right points
     # points = ibs.depc.get_property('Notch_Tips', aid_list)
-    img_paths = ibs.depc.get_native_property('Cropped_Chips', cpid_list, 'img', read_extern=False)
+    img_paths = ibs.depc.get_native_property('Cropped_Chips', cpid_list, ('img',), read_extern=False)
     points = ibs.depc.get_native_property('Cropped_Chips', cpid_list, ('notch', 'left', 'right'))
     # get the actual images
     #aid_list = depc.get_root_rowids('Notch_Tips', ntid_list)
