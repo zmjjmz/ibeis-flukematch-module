@@ -4,6 +4,64 @@ import cv2
 import numpy as np
 import ctypes
 from os.path import dirname, join
+from ibeis_flukematch.kpextractor import build_kpextractor128
+import utool as ut
+import theano.tensor as T
+from theano import function as tfn
+import lasagne.layers as ll
+from itertools import chain
+
+def setup_kp_network():
+    network_params_path = ut.grab_file_url('http://lev.cs.rpi.edu/public/models/kpextractor_weights.pickle', appname='ibs')
+    network_params = ut.load_cPkl(network_params_path)
+    # network_params also includes normalization constants needed for the dataset, and is assumed to be a dictionary
+    # with keys mean, std, and params
+    network_exp = build_kpextractor128()
+    ll.set_all_param_values(network_exp, network_params['params'])
+    X = T.tensor4()
+    network_fn = tfn([X], ll.get_output(network_exp, X, deterministic=True))
+    return {'mean':network_params['mean'], 'std':network_params['std'], 'networkfn':network_fn}
+
+def bound_output(output, size_mat):
+    # make sure the output doessn't exceed the boundaries of the image
+    # if it does, snap it to the edge of each dimension it exceeds
+    bound_below = np.max(np.stack([output, np.zeros(output.shape)],axis=2),axis=2)
+    bound_above = np.min(np.stack([bound_below, size_mat],axis=2),axis=2)
+    return bound_above
+
+def infer_kp(img_paths, networkfn, mean, std, batch_size=32, input_size=(128,128)):
+    # load up the images in batches
+    nbatches = (len(img_paths) // batch_size) + 1
+    predictions = []
+    for batch_ind in range(nbatches):
+        batch_slice = slice(batch_ind * batch_size, (batch_ind + 1) * batch_size)
+        print("[infer_kp] Batch %d/%d, processing %d images" % (batch_ind, nbatches, len(img_paths[batch_slice])))
+        batch_imgs = []
+        batch_sizes = []
+        for img_path in img_paths[batch_slice]:
+            img = cv2.cvtColor(cv2.imread(img_path), cv2.COLOR_BGR2GRAY)
+            original_size = img.shape[::-1]
+            batch_sizes.append(original_size)
+            img = cv2.resize(img, input_size, cv2.INTER_LANCZOS4)
+            img = np.expand_dims(img, axis=0) # add a dummy channel
+            # assume zscore normalization
+            img = (img.astype(np.float32) - mean) / std
+            batch_imgs.append(img)
+        nd_imgs = np.stack(batch_imgs, axis=0)
+        # get outputs and convert to dict format
+        batch_outputs = networkfn(nd_imgs)
+        batch_ptdicts = []
+        for output, size in zip(batch_outputs, batch_sizes):
+            size_mat = np.array([size]*3,dtype=np.float32).reshape(3,2)
+            output = (output * size_mat).astype(np.int)
+            output = bound_output(output, size_mat)
+            ptdict = {'left':output[0,:],
+                      'right':output[1,:],
+                      'notch':output[2,:],}
+            batch_ptdicts.append(ptdict)
+        predictions = chain(predictions, batch_ptdicts)
+    predictions = list(predictions)
+    return predictions
 
 
 def find_trailing_edge(img, start, end, center=None, n_neighbors=3):

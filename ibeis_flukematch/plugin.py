@@ -18,7 +18,9 @@ from ibeis import constants as const
 from ibeis import register_preproc, register_algo
 from ibeis_flukematch.flukematch import (find_trailing_edge_cpp,
                                          block_integral_curvatures_cpp,
-                                         get_distance_curvweighted,)
+                                         get_distance_curvweighted,
+                                         setup_kp_network,
+                                         infer_kp,)
 (print, rrr, profile) = ut.inject2(__name__, '[flukeplug]')
 
 #register_preproc = lambda *args, **kwargs: ut.identity
@@ -155,7 +157,7 @@ class NotchTipConfig(dtool.TableConfig):
 
 
 @register_preproc('Notch_Tips', [const.CHIP_TABLE], ['notch', 'left', 'right'], [np.ndarray, np.ndarray, np.ndarray],
-                    configclass=NotchTipConfig)
+                    configclass=NotchTipConfig, version=2)
 def preproc_notch_tips(depc, cid_list, config=None):
     r"""
     Args:
@@ -180,7 +182,7 @@ def preproc_notch_tips(depc, cid_list, config=None):
         >>> aid_list = ut.compress(all_aids, isvalid)
         >>> aid_list = aid_list[0:10]
         >>> #config = dict(dim_size=None)
-        >>> config = dict()
+        >>> config = {'manual_extract':False}
         >>> cid_list = ibs.depc.get_rowids(const.CHIP_TABLE, aid_list, config)
         >>> propgen = preproc_notch_tips(ibs.depc, cid_list, config)
         >>> notch_tips = list(propgen)
@@ -205,21 +207,36 @@ def preproc_notch_tips(depc, cid_list, config=None):
     config = config.copy()
 
     ibs = depc.controller
-    # TODO: Implement manual annotation options
-    # HACK: Read in a file that associates image names w/these annotations, and
-    #   try to associate these w/the image names
-    # HACK: hardcode this filename relative to the IBEIS directory
-
-    # this is a dict of img: dict of left/right/notch to the corresponding
-    # point
-    fn = join(ibs.get_dbdir(), 'fluke_image_points.pkl')
-    img_points_map = ut.load_cPkl(fn)
 
     aid_list = depc.get_root_rowids(const.CHIP_TABLE, cid_list)
     img_names = ibs.get_annot_image_names(aid_list)
 
     M_list = ibs.depc.get_native_property(const.CHIP_TABLE, cid_list, 'M')
     size_list = ibs.depc.get_native_property(const.CHIP_TABLE, cid_list, ('width', 'height'))
+
+    if config['manual_extract']:
+        # TODO: Implement manual annotation options
+        # HACK: Read in a file that associates image names w/these annotations, and
+        #   try to associate these w/the image names
+        # HACK: hardcode this filename relative to the IBEIS directory
+
+        # this is a dict of img: dict of left/right/notch to the corresponding
+        # point
+        fn = join(ibs.get_dbdir(), 'fluke_image_points.pkl')
+        img_points_map = ut.load_cPkl(fn)
+    else:
+        network_data = setup_kp_network()
+        # process all the points at once
+        # TODO: Is this the best way to do this? Or should we do it in the main loop? Another preproc node?
+        img_paths = depc.get_native_property(const.CHIP_TABLE, cid_list, 'img',
+                                            read_extern=False)
+        # assume infer_kp handles the bounds checking / snapping
+        # TODO: Add config for batch size and image size
+        pt_preds = infer_kp(img_paths, network_data['networkfn'],
+                                      network_data['mean'],
+                                      network_data['std'])
+        img_points_map = {img_name:pt_pred for img_name, pt_pred in zip(img_names, pt_preds)}
+
 
     def inbounds(size, point):
         return (point[0] >= 0 and point[0] < size[0]) and (point[1] >= 0 and point[1] < size[1])
@@ -316,10 +333,16 @@ def preproc_cropped_chips(depc, cid_list, tipid_list, config=None):
     for img, tips, path in zip(img_list, tips_list, crop_path_list):
         left, notch, right = tips
         bbox = (0, 0, img.shape[1], img.shape[0])  # default to bbox being whole image
-        chip_size = img.shape[::-1]
+        chip_size = (img.shape[1],img.shape[0])
+        if left[0] > right[0]:
+            # HACK: Ugh, I don't like this
+            # TODO: maybe move this to infer_kp?
+            right, left = (left, right)
         if config['crop_enabled']:
             # figure out bbox (x, y, w, h) w/x, y on top left
             # assume left is on the left note: this may not be a good assumption
+            # note: lol that's not a good assumption
+            # what do when network predicts left on right and right on left?
             bbox = (left[0],  # leftmost x value
                     0,  # top of the image
                     (right[0] - left[0]),  # width
@@ -334,9 +357,9 @@ def preproc_cropped_chips(depc, cid_list, tipid_list, config=None):
             #new_y = int(new_x / ratio)
             #chip_size = (new_x, new_y)
             chip_size = vt.get_scaled_size_with_width(new_x, bbox[2], bbox[3])
-
         M = vt.get_image_to_chip_transform(bbox, chip_size, 0)
-        new_img = cv2.warpAffine(img, M[:-1, :], chip_size)
+        with ut.embed_on_exception_context:
+            new_img = cv2.warpAffine(img, M[:-1, :], chip_size)
 
         notch_, left_, right_ = vt.transform_points_with_homography(M, np.array([notch, left, right]).T).T
 
@@ -600,6 +623,8 @@ class BC_DTW_Config(dtool.AlgoConfig):
             ut.ParamInfo('decision', 'average'),
             #ut.ParamInfo('sizes', (5, 10, 15, 20)),
             ut.ParamInfo('weights', None),
+            ut.ParamInfo('dummy2',True),
+            ut.ParamInfo('window',50),
         ]
 
 
@@ -620,7 +645,7 @@ class BC_DTW_Request(dtool.AlgoRequest):
                algo_request_class=BC_DTW_Request,
                #configclass=DEFAULT_ALGO_CONFIG,
                configclass=BC_DTW_Config,
-               chunksize=8, version=0)
+               chunksize=8, version=1)
 def id_algo_bc_dtw(depc, request):
     r"""
     Args:
@@ -704,7 +729,7 @@ def id_algo_bc_dtw(depc, request):
         #dists_by_nid = defaultdict(list)
         daid_dists = []
         for db_curv, daid, dnid in zip(db_curvs, daid_list, dnid_list):
-            distance = get_distance_curvweighted(query_curv, db_curv, curv_weights)
+            distance = get_distance_curvweighted(query_curv, db_curv, curv_weights, window=config['window'])
             daid_dists.append(-1 * distance)
             #dists_by_nid[dnid].append(-1 * distance)
 
