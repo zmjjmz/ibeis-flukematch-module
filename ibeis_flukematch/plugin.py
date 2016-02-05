@@ -2,7 +2,13 @@
 """
 CommandLine:
     python -m ibeis --tf autogen_ipynb --db humpbacks --ipynb -t default:proot=BC_DTW -a default:has_any=hasnotch
-    python -m ibeis --tf autogen_ipynb --db humpbacks --ipynb -t default:proot=BC_DTW default:proot=vsmany -a default:has_any=hasnotch,mingt=2,qindex=0:50 --noexample
+    python -m ibeis --tf autogen_ipynb --db humpbacks --ipynb -t default:proot=BC_DTW -a default:has_any=hasnotch -t default:proot=BC_DTW,manual_extract=True  default:proot=BC_DTW,manual_extract=True
+    python -m ibeis --tf autogen_ipynb --db humpbacks --ipynb -t default:proot=BC_DTW default:proot=vsmany -a default:has_any=hasnotch,mingt=2,qindex=0:50,dindex=0:50 --noexample
+
+
+DEBUG FB ISSUE:
+    ibeis -e draw_cases --db humpbacks_fb -a default:has_any=hasnotch,mingt=2,size=100 -t default:proot=BC_DTW,decision=max,crop_dim_size=500,crop_enabled=True,manual_extract=False  --show --qaid-override 468
+
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
 import ibeis
@@ -156,8 +162,17 @@ class NotchTipConfig(dtool.TableConfig):
         ]
 
 
+def show_notch_tips(depc, aid, config={}, fnum=None, pnum=None):
+    import plottool as pt
+    pt.figure(fnum=fnum, pnum=pnum)
+    notch = depc.get('Notch_Tips', aid, config=config)
+    chip = depc.get('chips', aid, 'img', config=config)
+    pt.imshow(chip)
+    pt.draw_kpts2(np.array(notch), pts=True, ell=False, pts_size=20)
+
+
 @register_preproc('Notch_Tips', [const.CHIP_TABLE], ['notch', 'left', 'right'], [np.ndarray, np.ndarray, np.ndarray],
-                    configclass=NotchTipConfig, version=2)
+                    configclass=NotchTipConfig, version=3)
 def preproc_notch_tips(depc, cid_list, config=None):
     r"""
     Args:
@@ -171,6 +186,8 @@ def preproc_notch_tips(depc, cid_list, config=None):
     CommandLine:
         python -m ibeis_flukematch.plugin --exec-preproc_notch_tips
         python -m ibeis_flukematch.plugin --exec-preproc_notch_tips --db humpbacks --no-cnn --show
+        python -m ibeis_flukematch.plugin --exec-preproc_notch_tips --db humpbacks --show --manual_extract=False
+        python -m ibeis_flukematch.plugin --exec-preproc_notch_tips --db humpbacks --show --manual_extract=True
         python -m ibeis_flukematch.plugin --exec-preproc_notch_tips --db humpbacks --no-cnn --clear-all-depcache
 
     Example:
@@ -182,23 +199,22 @@ def preproc_notch_tips(depc, cid_list, config=None):
         >>> aid_list = ut.compress(all_aids, isvalid)
         >>> aid_list = aid_list[0:10]
         >>> #config = dict(dim_size=None)
-        >>> config = {'manual_extract':False}
-        >>> cid_list = ibs.depc.get_rowids(const.CHIP_TABLE, aid_list, config)
-        >>> propgen = preproc_notch_tips(ibs.depc, cid_list, config)
-        >>> notch_tips = list(propgen)
-        >>> #print(len(filter(lambda x: x is not None, result)))
+        >>> config = NotchTipConfig.from_argv_dict()
+        >>> depc = ibs.depc
+        >>> config['dim_size'] = 480
+        >>> cid_list = depc.get_rowids('chips', aid_list, config)
+        >>> notch_tips = list(preproc_notch_tips(depc, cid_list, config))
         >>> result = ut.depth_profile(notch_tips)
         >>> print('depth_profile(notch_tips) = %r' % (result,))
         >>> ut.quit_if_noshow()
-        >>> chip_list = ibs.depc.get_native_property('chips', cid_list, 'img')
+        >>> chip_list1 = depc.get_native_property('chips', cid_list, 'img')
+        >>> chip_list2 = depc.get('chips', aid_list, 'img', config=config)
+        >>> assert np.all(chip_list2[0] == chip_list1[0])
+        >>> chip_list = chip_list2
         >>> import plottool as pt
         >>> ut.ensure_pylab_qt4()
-        >>> for notch, chip in ut.InteractiveIter(zip(notch_tips, chip_list)):
-        >>>     pt.reset()
-        >>>     pt.imshow(chip)
-        >>>     kpts_ = np.array(notch)
-        >>>     pt.draw_kpts2(kpts_, pts=True, ell=False, pts_size=20)
-        >>>     pt.update()
+        >>> overlay_chips = [overlay_fluke_feats(chip, tips=tips) for chip,  tips in zip(chip_list, notch_tips)]
+        >>> iteract_obj = pt.interact_multi_image.MultiImageInteraction(overlay_chips, nPerPage=4, autostart=True)
         >>> ut.show_if_requested()
     """
     print('Preprocess Notch_Tips')
@@ -229,14 +245,14 @@ def preproc_notch_tips(depc, cid_list, config=None):
         # process all the points at once
         # TODO: Is this the best way to do this? Or should we do it in the main loop? Another preproc node?
         img_paths = depc.get_native_property(const.CHIP_TABLE, cid_list, 'img',
-                                            read_extern=False)
+                                             read_extern=False)
         # assume infer_kp handles the bounds checking / snapping
         # TODO: Add config for batch size and image size
-        pt_preds = infer_kp(img_paths, network_data['networkfn'],
-                                      network_data['mean'],
-                                      network_data['std'])
-        img_points_map = {img_name:pt_pred for img_name, pt_pred in zip(img_names, pt_preds)}
-
+        networkfn = network_data['networkfn']
+        mean = network_data['mean']
+        std = network_data['std']
+        pt_preds = infer_kp(img_paths, networkfn, mean, std)
+        img_points_map = {img_name: pt_pred for img_name, pt_pred in zip(img_names, pt_preds)}
 
     def inbounds(size, point):
         return (point[0] >= 0 and point[0] < size[0]) and (point[1] >= 0 and point[1] < size[1])
@@ -249,9 +265,14 @@ def preproc_notch_tips(depc, cid_list, config=None):
             ptdict = img_points_map[imgn]
             notch, left, right = ut.dict_take(ptdict, ['notch', 'left', 'right'])
 
-            notch_ = bound_point(M[0:2].T.dot(notch)[0:2], size)
-            left_  = bound_point(M[0:2].T.dot(left)[0:2], size)
-            right_ = bound_point(M[0:2].T.dot(right)[0:2], size)
+            if config['manual_extract']:
+                notch_ = bound_point(M[0:2].T.dot(notch)[0:2], size)
+                left_  = bound_point(M[0:2].T.dot(left)[0:2], size)
+                right_ = bound_point(M[0:2].T.dot(right)[0:2], size)
+            else:
+                notch_ = notch
+                left_  = left
+                right_ = right
 
             # verify that the notch / left / right are within the bounds specified by size
             assert(inbounds(size, notch_) and inbounds(size, left_) and inbounds(size, right_))
@@ -333,7 +354,7 @@ def preproc_cropped_chips(depc, cid_list, tipid_list, config=None):
     for img, tips, path in zip(img_list, tips_list, crop_path_list):
         left, notch, right = tips
         bbox = (0, 0, img.shape[1], img.shape[0])  # default to bbox being whole image
-        chip_size = (img.shape[1],img.shape[0])
+        chip_size = (img.shape[1], img.shape[0])
         if left[0] > right[0]:
             # HACK: Ugh, I don't like this
             # TODO: maybe move this to infer_kp?
@@ -371,14 +392,20 @@ def preproc_cropped_chips(depc, cid_list, tipid_list, config=None):
         yield (path, bbox[2], bbox[3], M, notch_, left_, right_)
 
 
-def overlay_trailing_edge(img, path, tips=None):
+def overlay_fluke_feats(img, path=None, tips=None):
     img_copy = img[:]
     # assume path is x, y
-    for j, i in path:
-        if (j >= img_copy.shape[1] or j < 0) or (i >= img_copy.shape[0] or i < 0):
-                continue
-        cv2.circle(img_copy, (j, i), 2, (255, 0, 0), thickness=-1)
-        #img_copy[i,j] = [255,0,0]
+    if path is not None:
+        for j, i in path:
+            if (j >= img_copy.shape[1] or j < 0) or (i >= img_copy.shape[0] or i < 0):
+                    continue
+            cv2.circle(img_copy, (j, i), 2, (255, 0, 0), thickness=-1)
+
+    if tips is not None:
+        for pt in tips:
+            pt1 = np.array(np.round(pt), dtype=np.int)
+            pt1 = tuple(pt1.tolist())
+            cv2.circle(img_copy, pt1, 7, (0, 128, 255), thickness=-7)
     return img_copy
 
 
@@ -431,7 +458,8 @@ def preproc_trailing_edge(depc, cpid_list, config=None):
         >>> #aid_list = [2826]
         >>> #chipcfg = ibeis.algo.preproc.preproc_chip.ChipConfig(dim_size=None)
         >>> chips = depc.get_property('Cropped_Chips', aid_list, 'img', config=config, _debug=True)
-        >>> overlay_chips = [overlay_trailing_edge(chip, path) for chip, path in zip(chips, tedge_list)]
+        >>> notches = depc.get_property('Cropped_Chips', aid_list, ('notch', 'left', 'right'), config=config, _debug=True)
+        >>> overlay_chips = [overlay_fluke_feats(chip, path, tips=tips) for chip, path, tips in zip(chips, tedge_list, notches)]
         >>> import plottool as pt
         >>> iteract_obj = pt.interact_multi_image.MultiImageInteraction(overlay_chips, nPerPage=4)
         >>> iteract_obj.start()
@@ -623,21 +651,33 @@ class BC_DTW_Config(dtool.AlgoConfig):
             ut.ParamInfo('decision', 'average'),
             #ut.ParamInfo('sizes', (5, 10, 15, 20)),
             ut.ParamInfo('weights', None),
-            ut.ParamInfo('dummy2',True),
-            ut.ParamInfo('window',50),
+            ut.ParamInfo('dummy2', True),
+            ut.ParamInfo('window', 50),
         ]
 
 
 class BC_DTW_Request(dtool.AlgoRequest):
     @ut.accepts_scalar_input
     def get_fmatch_overlayed_chip(self, aid_list, config=None):
+        """
+        import plottool as pt
+        pt.ensure_pylab_qt4()
+        pt.imshow(overlay_chips[0])
+        """
         # FIXME: THIS STRUCTURE OF TELLING HOW FEATURE
         # MATCHES SHOULD BE VISUALIZED IS NOT FINAL.
+
         depc = self.depc
+
+        config2 = config.copy()
+        config2['manual_extract'] = True
+
         #chips = depc.get_property('chips', aid_list, 'img', config=config)
         chips = depc.get_property('Cropped_Chips', aid_list, 'img', config=config)
+
+        points = depc.get_property('Cropped_Chips', aid_list, ('notch', 'left', 'right'), config=config)
         tedge_list = depc.get_property('Trailing_Edge', aid_list, 'edge', config=config)
-        overlay_chips = [overlay_trailing_edge(chip, path) for chip, path in zip(chips, tedge_list)]
+        overlay_chips = [overlay_fluke_feats(chip, path=path, tips=tips) for chip, path, tips in zip(chips, tedge_list, points)]
         return overlay_chips
 
 
