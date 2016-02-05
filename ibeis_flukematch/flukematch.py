@@ -21,20 +21,21 @@ def setup_kp_network():
     ll.set_all_param_values(network_exp, network_params['params'])
     X = T.tensor4()
     network_fn = tfn([X], ll.get_output(network_exp, X, deterministic=True))
-    return {'mean':network_params['mean'], 'std':network_params['std'], 'networkfn':network_fn}
+    return {'mean': network_params['mean'], 'std': network_params['std'], 'networkfn': network_fn}
 
 
 def bound_output(output, size_mat):
     # make sure the output doessn't exceed the boundaries of the image
     # if it does, snap it to the edge of each dimension it exceeds
-    bound_below = np.max(np.stack([output, np.zeros(output.shape)],axis=2),axis=2)
-    bound_above = np.min(np.stack([bound_below, size_mat],axis=2),axis=2)
+    bound_below = np.max(np.stack([output, np.zeros(output.shape)], axis=2), axis=2)
+    bound_above = np.min(np.stack([bound_below, size_mat], axis=2), axis=2)
     return bound_above
 
 
 def infer_kp(img_paths, networkfn, mean, std, batch_size=32, input_size=(128, 128)):
     """
     >>> from ibeis_flukematch.flukematch import *
+    >>> pt.imshow(overlay_fluke_feats((img[0] * std + mean), tips=batch_outputs[0] * 128))
     """
     # load up the images in batches
     nbatches = (len(img_paths) // batch_size) + 1
@@ -136,7 +137,6 @@ try:
     lib = ctypes.cdll.LoadLibrary(join(dirname(__file__), 'flukematch_lib.so'))
     HAS_LIB = True
 except Exception as ex:
-    import utool as ut
     ut.printex(ex, iswarning=True)
     HAS_LIB = False
 
