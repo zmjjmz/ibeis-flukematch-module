@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 import ctypes
 from os.path import dirname, join
-from ibeis_flukematch.kpextractor import build_kpextractor128
+from ibeis_flukematch.kpextractor import build_kpextractor128, build_kpextractor128_decoupled
 import utool as ut
 import theano.tensor as T
 from theano import function as tfn
@@ -17,7 +17,7 @@ def setup_kp_network():
     network_params = ut.load_cPkl(network_params_path)
     # network_params also includes normalization constants needed for the dataset, and is assumed to be a dictionary
     # with keys mean, std, and params
-    network_exp = build_kpextractor128()
+    network_exp = build_kpextractor128_decoupled()
     ll.set_all_param_values(network_exp, network_params['params'])
     X = T.tensor4()
     network_fn = tfn([X], ll.get_output(network_exp, X, deterministic=True))
@@ -28,7 +28,7 @@ def bound_output(output, size_mat):
     # make sure the output doessn't exceed the boundaries of the image
     # if it does, snap it to the edge of each dimension it exceeds
     bound_below = np.max(np.stack([output, np.zeros(output.shape)], axis=2), axis=2)
-    bound_above = np.min(np.stack([bound_below, size_mat], axis=2), axis=2)
+    bound_above = np.min(np.stack([bound_below, size_mat-1], axis=2), axis=2)
     return bound_above
 
 
@@ -149,9 +149,10 @@ if HAS_LIB:
     find_te.argtypes = [ndmat_f_type, ctypes.c_int, ctypes.c_int,  # image and size info
                         ctypes.c_int, ctypes.c_int, ctypes.c_int,  # startcol, endrow, endcol
                         ctypes.c_int, ndmat_i_type]  # number of neighbors, output path
+    find_te.restype = ctypes.c_float
 
 
-def find_trailing_edge_cpp(img, start, end, center, n_neighbors=5):
+def find_trailing_edge_cpp(img, start, end, center, n_neighbors=5, ignore_notch=False):
     # points are x,y
     if len(img.shape) == 3:
         img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -164,8 +165,9 @@ def find_trailing_edge_cpp(img, start, end, center, n_neighbors=5):
     gradient_y_image[:, end[0]] = np.inf
     gradient_y_image[end[1], end[0]] = 0
 
-    gradient_y_image[:, center[0]] = np.inf
-    gradient_y_image[center[1], center[0]] = 0
+    if not ignore_notch:
+        gradient_y_image[:, center[0]] = np.inf
+        gradient_y_image[center[1], center[0]] = 0
 
     outpath = np.zeros((end[0] - start[0], 2), dtype=np.int32)
     cost = find_te(gradient_y_image, gradient_y_image.shape[0],

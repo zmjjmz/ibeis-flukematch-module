@@ -413,6 +413,7 @@ class TrailingEdgeConfig(dtool.TableConfig):
     def get_param_info_list(self):
         return [
             ut.ParamInfo('n_neighbors', 5, 'n_nb'),
+            ut.ParamInfo('ignore_notch', False, 'ign_n', hideif=False),
         ]
 
 
@@ -508,7 +509,7 @@ def preproc_trailing_edge(depc, cpid_list, config=None):
         # TODO: find_trailing_edge should work to subpixel accuracy
         tedge, cost = find_trailing_edge_cpp(
             img_grey, left, right, notch,
-            n_neighbors=n_neighbors)
+            n_neighbors=n_neighbors, ignore_notch=config['ignore_notch'])
         yield (tedge, cost)
 
 

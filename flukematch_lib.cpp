@@ -125,10 +125,11 @@ extern "C" float find_trailing_edge(float * gradient_imgv, int gradient_rows, in
     int curr_row = endrow;
     float total_cost = 0;
     //printf("Reconstructing the optimal path\n");
-    //printf("Rows: %d\n", (int)cost.rows());
+    //printf("Cost sum %0.2f", cost.sum());
     for (struct {int ind; int col;} P = {0, endcol}; 
          P.col > startcol; P.col--, P.ind++) {
         total_cost += cost(curr_row, P.col);
+        //printf("Original cost at (%d, %d): %0.2f\n", P.col, curr_row, cost(curr_row, P.col));
         // x, y
         outpath(P.ind, 0) = P.col;
         outpath(P.ind, 1) = curr_row;
