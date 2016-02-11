@@ -721,7 +721,7 @@ def id_algo_bc_dtw(depc, request):
 
         ibeis -e rank_cdf --db humpbacks -a default:has_any=hasnotch,mingt=2 -t default:pipeline_root=BC_DTW --show  --clear-all-depcache
 
-        ibeis -e rank_cdf --db humpbacks -t default:proot=BC_DTW,decision=max,crop_dim_size=500,crop_enabled=True,manual_extract=False,use_te_scorer=True,ignore_notch=True -a ctrl:has_any=hasnotch,size=20 default:proot=BC_DTW,decision=max,crop_dim_size=500,crop_enabled=True,manual_extract=False,ignore_notch=True --show
+        ibeis -e rank_cdf --db humpbacks -t default:proot=BC_DTW,decision=max,crop_dim_size=500,crop_enabled=True,manual_extract=False,use_te_scorer=True,ignore_notch=True default:proot=BC_DTW,decision=max,crop_dim_size=500,crop_enabled=True,manual_extract=False,ignore_notch=True -a ctrl:has_any=hasnotch,size=40  --show
 
 
     Example:
