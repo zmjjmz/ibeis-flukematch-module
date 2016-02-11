@@ -4,7 +4,10 @@ import cv2
 import numpy as np
 import ctypes
 from os.path import dirname, join
-from ibeis_flukematch.kpextractor import build_kpextractor128, build_kpextractor128_decoupled
+from ibeis_flukematch.networks import (
+        build_kpextractor128_decoupled,
+        build_segmenter_simple,
+        )
 import utool as ut
 import theano.tensor as T
 from theano import function as tfn
@@ -69,6 +72,55 @@ def infer_kp(img_paths, networkfn, mean, std, batch_size=32, input_size=(128, 12
         predictions = chain(predictions, batch_ptdicts)
     predictions = list(predictions)
     return predictions
+
+
+def setup_te_network():
+    network_params_path = ut.grab_file_url('http://lev.cs.rpi.edu/public/models/tescorer_weights.pickle', appname='ibs')
+    network_params = ut.load_cPkl(network_params_path)
+    # network_params also includes normalization constants needed for the dataset, and is assumed to be a dictionary
+    # with keys mean, std, and params
+    network_exp = build_segmenter_simple()
+    ll.set_all_param_values(network_exp, network_params['params'])
+    X = T.tensor4()
+    network_fn = tfn([X], ll.get_output(network_exp, X, deterministic=True))
+    return {'mean': network_params['mean'], 'std': network_params['std'], 'networkfn': network_fn}
+
+def score_te(img_paths, networkfn, mean, std, batch_size=32, input_size=None):
+    # load up the images in batches
+    nbatches = (len(img_paths) // batch_size) + 1
+    predictions = []
+    for batch_ind in range(nbatches):
+        batch_slice = slice(batch_ind * batch_size, (batch_ind + 1) * batch_size)
+        print("[score_te] Batch %d/%d, processing %d images" % (batch_ind, nbatches, len(img_paths[batch_slice])))
+        batch_imgs = []
+        batch_sizes = []
+        for img_path in img_paths[batch_slice]:
+            img = cv2.cvtColor(cv2.imread(img_path), cv2.COLOR_BGR2GRAY)
+            original_size = img.shape[::-1]
+            batch_sizes.append(original_size)
+            if input_size is not None:
+                img = cv2.resize(img, input_size, cv2.INTER_LANCZOS4)
+            img = np.expand_dims(img, axis=0)  # add a dummy channel
+            # assume zscore normalization
+            img = (img.astype(np.float32) - mean) / std
+            batch_imgs.append(img)
+        # we only want the background probabilities
+        bg_ind = 1
+
+        if input_size is not None:
+            nd_imgs = np.stack(batch_imgs, axis=0)
+            batch_outputs = networkfn(nd_imgs)
+            # denumpy it
+            batch_outputs = [i[bg_ind] for i in batch_outputs]
+        else:
+            nd_imgs = [np.expand_dims(img, axis=0) for img in batch_imgs]
+            # denumpy it
+            batch_outputs = [networkfn(img)[0][bg_ind] for img in nd_imgs]
+        predictions = chain(predictions, batch_outputs)
+    predictions = list(predictions)
+    return predictions
+
+
 
 
 def find_trailing_edge(img, start, end, center=None, n_neighbors=3):
@@ -152,26 +204,41 @@ if HAS_LIB:
     find_te.restype = ctypes.c_float
 
 
-def find_trailing_edge_cpp(img, start, end, center, n_neighbors=5, ignore_notch=False):
+def normalize_01(img):
+    norm_img = (img - np.min(img)) / (np.max(img) - np.min(img))
+    return norm_img
+
+
+def find_trailing_edge_cpp(img, start, end, center, n_neighbors=5, ignore_notch=False, score_mat=None):
     # points are x,y
     if len(img.shape) == 3:
         img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     assert(n_neighbors % 2 == 1)
     gradient_y_image = 1 * cv2.Sobel(img, cv2.CV_32F, 0, 1, ksize=5)
+    # normalize so that all gradients lie in -1, 0
+    norm_grad = normalize_01(gradient_y_image)
+    # so now we still want to be minimizing, which means that the score_mat
+    # can be directly used (as it is going to be in 0,1 probability of it being bg)
 
-    gradient_y_image[:, start[0]] = np.inf
-    gradient_y_image[start[1], start[0]] = 0
+    # next question: how do we factor in the score?
+    # Option 1: Just blend it in
+    if score_mat is not None
+        score_grad = np.average(np.stack([norm_grad, score_mat],axis=0),axis=0)
 
-    gradient_y_image[:, end[0]] = np.inf
-    gradient_y_image[end[1], end[0]] = 0
+
+    score_grad[:, start[0]] = 1 * np.inf
+    score_grad[start[1], start[0]] = 0
+
+    score_grad[:, end[0]] = 1 * np.inf
+    score_grad[end[1], end[0]] = 0
 
     if not ignore_notch:
-        gradient_y_image[:, center[0]] = np.inf
-        gradient_y_image[center[1], center[0]] = 0
+        score_grad[:, center[0]] = 1 * np.inf
+        score_grad[center[1], center[0]] = 0
 
     outpath = np.zeros((end[0] - start[0], 2), dtype=np.int32)
-    cost = find_te(gradient_y_image, gradient_y_image.shape[0],
-                   gradient_y_image.shape[1], start[0], end[1], end[0],
+    cost = find_te(score_grad, score_grad.shape[0],
+                   score_grad.shape[1], start[0], end[1], end[0],
                    n_neighbors, outpath)
     return outpath, cost
 

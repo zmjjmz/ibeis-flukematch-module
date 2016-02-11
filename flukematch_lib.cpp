@@ -106,7 +106,7 @@ extern "C" float find_trailing_edge(float * gradient_imgv, int gradient_rows, in
         for (int row = 0; row < gradient_rows; row++) {
             // argmin over candidates
             int best_candidate = n_neighbors / 2; // middle
-            float best_cand_cost = INFINITY;
+            float best_cand_cost = 1 * INFINITY;
             for (int i=0; i < neighbor_range.rows(); i++) {
                 float cand_cost = get_te_cost(row, col, neighbor_range(i, 0), cost, gradient_img);
                 if (cand_cost < best_cand_cost) {
