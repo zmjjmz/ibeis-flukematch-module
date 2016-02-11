@@ -159,6 +159,7 @@ class NotchTipConfig(dtool.TableConfig):
     def get_param_info_list(self):
         return [
             ut.ParamInfo('manual_extract', False, hideif=False),
+            ut.ParamInfo('version', 1)
         ]
 
 
@@ -172,7 +173,7 @@ def show_notch_tips(depc, aid, config={}, fnum=None, pnum=None):
 
 
 @register_preproc('Notch_Tips', [const.CHIP_TABLE], ['notch', 'left', 'right'], [np.ndarray, np.ndarray, np.ndarray],
-                    configclass=NotchTipConfig, version=3)
+                    configclass=NotchTipConfig)
 def preproc_notch_tips(depc, cid_list, config=None):
     r"""
     Args:
@@ -298,6 +299,7 @@ class CropChipConfig(dtool.TableConfig):
         return [
             ut.ParamInfo('crop_dim_size', 960, 'sz', hideif=lambda cfg: cfg['crop_enabled'] is False or cfg['crop_dim_size'] is None),
             ut.ParamInfo('crop_enabled', False, hideif=False),
+            ut.ParamInfo('version', 1)
         ]
 
 
@@ -308,8 +310,7 @@ class CropChipConfig(dtool.TableConfig):
     colnames=['img', 'width', 'height', 'M', 'notch', 'left', 'right'],
     coltypes=[('extern', vt.imread), int, int, np.ndarray, np.ndarray, np.ndarray, np.ndarray],
     configclass=CropChipConfig,
-    fname='cropped_chip',
-    version=3,
+    fname='cropped_chip'
 )
 def preproc_cropped_chips(depc, cid_list, tipid_list, config=None):
     """
@@ -414,11 +415,12 @@ class TrailingEdgeConfig(dtool.TableConfig):
         return [
             ut.ParamInfo('n_neighbors', 5, 'n_nb'),
             ut.ParamInfo('ignore_notch', False, 'ign_n', hideif=False),
+            ut.ParamInfo('version', 1),
         ]
 
 
 @register_preproc('Trailing_Edge', ['Cropped_Chips'], ['edge', 'cost'], [np.ndarray, float],
-                    configclass=TrailingEdgeConfig, version=7)
+                    configclass=TrailingEdgeConfig)
 def preproc_trailing_edge(depc, cpid_list, config=None):
     r"""
     Args:
@@ -652,8 +654,8 @@ class BC_DTW_Config(dtool.AlgoConfig):
             ut.ParamInfo('decision', 'average'),
             #ut.ParamInfo('sizes', (5, 10, 15, 20)),
             ut.ParamInfo('weights', None),
-            ut.ParamInfo('dummy2', True),
             ut.ParamInfo('window', 50),
+            ut.ParamInfo('version', 1),
         ]
 
 
@@ -667,18 +669,13 @@ class BC_DTW_Request(dtool.AlgoRequest):
         """
         # FIXME: THIS STRUCTURE OF TELLING HOW FEATURE
         # MATCHES SHOULD BE VISUALIZED IS NOT FINAL.
-
         depc = self.depc
-
-        config2 = config.copy()
-        config2['manual_extract'] = True
-
-        #chips = depc.get_property('chips', aid_list, 'img', config=config)
         chips = depc.get_property('Cropped_Chips', aid_list, 'img', config=config)
-
-        points = depc.get_property('Cropped_Chips', aid_list, ('notch', 'left', 'right'), config=config)
+        points = depc.get_property('Cropped_Chips', aid_list, ('notch', 'left', 'right'),
+                                   config=config)
         tedge_list = depc.get_property('Trailing_Edge', aid_list, 'edge', config=config)
-        overlay_chips = [overlay_fluke_feats(chip, path=path, tips=tips) for chip, path, tips in zip(chips, tedge_list, points)]
+        overlay_chips = [overlay_fluke_feats(chip, path=path, tips=tips)
+                         for chip, path, tips in zip(chips, tedge_list, points)]
         return overlay_chips
 
 
@@ -686,7 +683,7 @@ class BC_DTW_Request(dtool.AlgoRequest):
                algo_request_class=BC_DTW_Request,
                #configclass=DEFAULT_ALGO_CONFIG,
                configclass=BC_DTW_Config,
-               chunksize=8, version=1)
+               chunksize=8)
 def id_algo_bc_dtw(depc, request):
     r"""
     Args:
@@ -698,7 +695,8 @@ def id_algo_bc_dtw(depc, request):
         ibeis.AnnotMatch:
 
     CommandLine:
-        python -m ibeis_flukematch.plugin --exec-id_algo_bc_dtw --show
+        python -m ibeis_flukematch.plugin --exec-id_algo_bc_dtw:0 --show
+        python -m ibeis_flukematch.plugin --exec-id_algo_bc_dtw --show --clear-all-depcache
 
         ibeis -e rank_cdf --db humpbacks -t default:pipeline_root=BC_DTW --qaid-override=1,9,15,16,18 --daid-override=1,9,15,16,18,21,22  --show --clear-all-depcache --nocache
         ibeis -e rank_cdf --db humpbacks -t default:pipeline_root=BC_DTW,crop_enabled=True --qaid-override=1 --daid-override=1,9,15  --show --clear-all-depcache --nocache  --debug-depc
@@ -711,16 +709,15 @@ def id_algo_bc_dtw(depc, request):
     Example:
         >>> # DISABLE_DOCTEST
         >>> from ibeis_flukematch.plugin import *  # NOQA
-        >>> ibs = ibeis.opendb(defaultdb='humpbacks')
-        >>> all_aids = ibs.get_valid_aids()
-        >>> isvalid = ibs.depc.get_property('Has_Notch', all_aids, 'flag')
-        >>> aid_list = ut.compress(all_aids, isvalid)
+        >>> import ibeis
+        >>> ibs, aid_list = ibeis.testdata_aids(
+        >>>     defaultdb='humpbacks', a='default:has_any=hasnotch,pername=2,mingt=2,size=10')
+        >>> ibs.print_annot_stats(aid_list)
         >>> depc = ibs.depc
-        >>> qaids = aid_list[0:10]
-        >>> daids = aid_list[0:10]
-        >>> #qaids = aid_list
-        >>> #daids = aid_list
-        >>> cfgdict = {'weights': None, 'decision': 'average', 'sizes': (5, 10, 15, 20), 'crop_enabled': True}
+        >>> qaids = aid_list
+        >>> daids = aid_list
+        >>> cfgdict = {'weights': None, 'decision': 'average',
+        >>>            'sizes': (5, 10, 15, 20), 'crop_enabled': True}
         >>> algoname = 'BC_DTW'
         >>> request = depc.new_algo_request(algoname, qaids, daids, cfgdict)
         >>> # Execute function
@@ -728,12 +725,36 @@ def id_algo_bc_dtw(depc, request):
         >>> am_list = list(propgen)
         >>> print('\n'.join(ut.lmap(str, am_list)))
         >>> result1 = (ut.repr2(np.vstack([am.annot_score_list for am in am_list]), precision=2))
+        >>> print(result1)
+        >>> am = am_list[0]
+        >>> am.ishow_analysis(request)
+        >>> ut.show_if_requested()
+
+    Example:
+        >>> # DISABLE_DOCTEST
+        >>> from ibeis_flukematch.plugin import *  # NOQA
+        >>> import ibeis
+        >>> ibs, aid_list = ibeis.testdata_aids(
+        >>>     defaultdb='humpbacks', a='default:has_any=hasnotch,pername=2,mingt=2,size=10')
+        >>> depc = ibs.depc
+        >>> qaids = aid_list[0:10]
+        >>> daids = aid_list[0:10]
+        >>> cfgdict = {'weights': None, 'decision': 'average',
+        >>>            'sizes': (5, 10, 15, 20), 'crop_enabled': True}
+        >>> algoname = 'BC_DTW'
+        >>> request = depc.new_algo_request(algoname, qaids, daids, cfgdict)
+        >>> # Execute function
+        >>> propgen = id_algo_bc_dtw(depc, request)
+        >>> am_list = list(propgen)
+        >>> result1 = (ut.repr2(np.vstack([am.annot_score_list for am in am_list]),
+        >>>                     precision=2))
         >>> am = am_list[0]
         >>> # Execute via cache
         >>> am_list2 = request.execute()
-        >>> result2 = (ut.repr2(np.vstack([am.annot_score_list for am in am_list2]), precision=2))
+        >>> result2 = (ut.repr2(np.vstack([am.annot_score_list
+        >>>                                for am in am_list2]), precision=2))
         >>> print(result1)
-        >>> assert result1 == result2
+        >>> assert result1 == result2, 'cache does not aggree with non-cache'
     """
     print('Executing BC_DTW')
     print(request)
@@ -770,8 +791,12 @@ def id_algo_bc_dtw(depc, request):
         #dists_by_nid = defaultdict(list)
         daid_dists = []
         for db_curv, daid, dnid in zip(db_curvs, daid_list, dnid_list):
-            distance = get_distance_curvweighted(query_curv, db_curv, curv_weights, window=config['window'])
-            daid_dists.append(-1 * distance)
+            distance = get_distance_curvweighted(query_curv, db_curv,
+                                                 curv_weights,
+                                                 window=config['window'])
+            #score = -1 * distance
+            score = np.exp(-distance / 50)
+            daid_dists.append(score)
             #dists_by_nid[dnid].append(-1 * distance)
 
         decision_func = getattr(np, config['decision'])
