@@ -26,7 +26,9 @@ from ibeis_flukematch.flukematch import (find_trailing_edge_cpp,
                                          block_integral_curvatures_cpp,
                                          get_distance_curvweighted,
                                          setup_kp_network,
-                                         infer_kp,)
+                                         infer_kp,
+                                         setup_te_network,
+                                         score_te,)
 (print, rrr, profile) = ut.inject2(__name__, '[flukeplug]')
 
 #register_preproc = lambda *args, **kwargs: ut.identity
@@ -159,7 +161,7 @@ class NotchTipConfig(dtool.TableConfig):
     def get_param_info_list(self):
         return [
             ut.ParamInfo('manual_extract', False, hideif=False),
-            ut.ParamInfo('version', 1)
+            ut.ParamInfo('ntversion', 1)
         ]
 
 
@@ -299,7 +301,7 @@ class CropChipConfig(dtool.TableConfig):
         return [
             ut.ParamInfo('crop_dim_size', 960, 'sz', hideif=lambda cfg: cfg['crop_enabled'] is False or cfg['crop_dim_size'] is None),
             ut.ParamInfo('crop_enabled', False, hideif=False),
-            ut.ParamInfo('version', 1)
+            ut.ParamInfo('ccversion', 1)
         ]
 
 
@@ -415,7 +417,8 @@ class TrailingEdgeConfig(dtool.TableConfig):
         return [
             ut.ParamInfo('n_neighbors', 5, 'n_nb'),
             ut.ParamInfo('ignore_notch', False, 'ign_n', hideif=False),
-            ut.ParamInfo('version', 1),
+            ut.ParamInfo('teversion', 1),
+            ut.ParamInfo('use_te_scorer', False, 'te_s', hideif=False),
         ]
 
 
@@ -481,8 +484,16 @@ def preproc_trailing_edge(depc, cpid_list, config=None):
     # get the actual images
     #aid_list = depc.get_root_rowids('Notch_Tips', ntid_list)
     #image_paths = ibs.get_annot_image_paths(aid_list)
+    if config['use_te_scorer']:
+        network_data = setup_te_network()
+        networkfn = network_data['networkfn']
+        mean = network_data['mean']
+        std = network_data['std']
+        score_preds = score_te(img_paths, networkfn, mean, std)
+    else:
+        score_preds = [None for _ in img_paths]
 
-    #cid_list = depc.get_ancestor_rowids('Notch_Tips', cpid_list, const.CHIP_TABLE)
+
     #image_paths = depc.get_native_property(const.CHIP_TABLE, cid_list, 'img')
     #image_paths = depc.get_native_property(const.CHIP_TABLE, cid_list, 'img',
     #                                       read_extern=False)
@@ -494,13 +505,13 @@ def preproc_trailing_edge(depc, cpid_list, config=None):
         print('[fluke-module] WARNING: Number of neighbors for trailing edge'
               'extraction not provided, defaulting to 5')
         n_neighbors = 5
-    _iter = zip(img_paths, points)
+    _iter = zip(img_paths, points, score_preds)
     progiter = ut.ProgIter(_iter, lbl='compute Trailing_Edge')
 
     def fix_point(point):
         return np.max(np.hstack([np.zeros((2, 1), dtype=np.int), (point - 1).reshape(-1, 1)]), axis=1)
 
-    for img_path, point_set in progiter:
+    for img_path, point_set, score_pred in progiter:
         img = cv2.imread(img_path)
         img_grey = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
@@ -511,7 +522,8 @@ def preproc_trailing_edge(depc, cpid_list, config=None):
         # TODO: find_trailing_edge should work to subpixel accuracy
         tedge, cost = find_trailing_edge_cpp(
             img_grey, left, right, notch,
-            n_neighbors=n_neighbors, ignore_notch=config['ignore_notch'])
+            n_neighbors=n_neighbors, ignore_notch=config['ignore_notch'],
+            score_mat=score_pred)
         yield (tedge, cost)
 
 
@@ -655,7 +667,7 @@ class BC_DTW_Config(dtool.AlgoConfig):
             #ut.ParamInfo('sizes', (5, 10, 15, 20)),
             ut.ParamInfo('weights', None),
             ut.ParamInfo('window', 50),
-            ut.ParamInfo('version', 1),
+            ut.ParamInfo('bcdtwversion', 1),
         ]
 
 

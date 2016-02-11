@@ -224,6 +224,8 @@ def find_trailing_edge_cpp(img, start, end, center, n_neighbors=5, ignore_notch=
     # Option 1: Just blend it in
     if score_mat is not None:
         score_grad = np.average(np.stack([norm_grad, score_mat],axis=0),axis=0)
+    else:
+        score_grad = norm_grad
 
 
     score_grad[:, start[0]] = 1 * np.inf
