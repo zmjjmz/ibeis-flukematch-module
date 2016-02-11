@@ -161,7 +161,8 @@ class NotchTipConfig(dtool.TableConfig):
     def get_param_info_list(self):
         return [
             ut.ParamInfo('manual_extract', False, hideif=False),
-            ut.ParamInfo('ntversion', 1)
+            #ut.ParamInfo('ntversion', 1)
+            ut.ParamInfo('version', 1),
         ]
 
 
@@ -301,7 +302,8 @@ class CropChipConfig(dtool.TableConfig):
         return [
             ut.ParamInfo('crop_dim_size', 960, 'sz', hideif=lambda cfg: cfg['crop_enabled'] is False or cfg['crop_dim_size'] is None),
             ut.ParamInfo('crop_enabled', False, hideif=False),
-            ut.ParamInfo('ccversion', 1)
+            #ut.ParamInfo('ccversion', 1)
+            ut.ParamInfo('version', 1),
         ]
 
 
@@ -417,7 +419,8 @@ class TrailingEdgeConfig(dtool.TableConfig):
         return [
             ut.ParamInfo('n_neighbors', 5, 'n_nb'),
             ut.ParamInfo('ignore_notch', False, 'ign_n', hideif=False),
-            ut.ParamInfo('teversion', 1),
+            #ut.ParamInfo('teversion', 1),
+            ut.ParamInfo('version', 1),
             ut.ParamInfo('use_te_scorer', False, 'te_s', hideif=False),
         ]
 
@@ -492,7 +495,6 @@ def preproc_trailing_edge(depc, cpid_list, config=None):
         score_preds = score_te(img_paths, networkfn, mean, std)
     else:
         score_preds = [None for _ in img_paths]
-
 
     #image_paths = depc.get_native_property(const.CHIP_TABLE, cid_list, 'img')
     #image_paths = depc.get_native_property(const.CHIP_TABLE, cid_list, 'img',
@@ -641,7 +643,7 @@ class BC_DTW_Config(dtool.AlgoConfig):
         >>> config = BC_DTW_Config()
         >>> result = config.get_cfgstr()
         >>> print(result)
-        BC_DTW(decision=average,sizes=(5, 10, 15, 20),weights=None,version=2)_CropChip()
+        BC_DTW(decision=average,sizes=(5, 10, 15, 20),weights=None,version=1)_CropChip()
     """
     def get_config_name(self):
         return 'BC_DTW'
@@ -667,7 +669,8 @@ class BC_DTW_Config(dtool.AlgoConfig):
             #ut.ParamInfo('sizes', (5, 10, 15, 20)),
             ut.ParamInfo('weights', None),
             ut.ParamInfo('window', 50),
-            ut.ParamInfo('bcdtwversion', 1),
+            #ut.ParamInfo('bcdtwversion', 1),
+            ut.ParamInfo('version', 1),
         ]
 
 
@@ -714,9 +717,12 @@ def id_algo_bc_dtw(depc, request):
         ibeis -e rank_cdf --db humpbacks -t default:pipeline_root=BC_DTW,crop_enabled=True --qaid-override=1 --daid-override=1,9,15  --show --clear-all-depcache --nocache  --debug-depc
         ibeis -e rank_cdf --db humpbacks -t default:pipeline_root=BC_DTW -a timectrl:has_any=hasnotch --show --nocache
 
-        ibeis -e rank_cdf --db humpbacks -a timectrl:has_any=hasnotch -t default:pipeline_root=BC_DTW --show
+        ibeis -e rank_cdf --db humpbacks -a ctrl:has_any=hasnotch,size=20 -t default:pipeline_root=BC_DTW --show
 
         ibeis -e rank_cdf --db humpbacks -a default:has_any=hasnotch,mingt=2 -t default:pipeline_root=BC_DTW --show  --clear-all-depcache
+
+        ibeis -e rank_cdf --db humpbacks -t default:proot=BC_DTW,decision=max,crop_dim_size=500,crop_enabled=True,manual_extract=False,use_te_scorer=True,ignore_notch=True -a ctrl:has_any=hasnotch,size=20 default:proot=BC_DTW,decision=max,crop_dim_size=500,crop_enabled=True,manual_extract=False,ignore_notch=True --show
+
 
     Example:
         >>> # DISABLE_DOCTEST
