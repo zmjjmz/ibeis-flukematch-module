@@ -2,12 +2,11 @@
 """
 CommandLine:
     python -m ibeis --tf autogen_ipynb --db humpbacks --ipynb -t default:proot=BC_DTW -a default:has_any=hasnotch
-    python -m ibeis --tf autogen_ipynb --db humpbacks --ipynb -t default:proot=BC_DTW -a default:has_any=hasnotch -t default:proot=BC_DTW,manual_extract=True  default:proot=BC_DTW,manual_extract=True
+    python -m ibeis --tf autogen_ipynb --db humpbacks -a default:has_any=hasnotch -t default:proot=BC_DTW,manual_extract=True default:proot=BC_DTW,manual_extract=True
     python -m ibeis --tf autogen_ipynb --db humpbacks --ipynb -t default:proot=BC_DTW default:proot=vsmany -a default:has_any=hasnotch,mingt=2,qindex=0:50,dindex=0:50 --noexample
+    python -m ibeis --tf autogen_ipynb --db humpbacks --ipynb -t default:proot=BC_DTW_NEW default:proot=vsmany -a default:has_any=hasnotch,mingt=2,qindex=0:50,dindex=0:50 --noexample
 
-
-DEBUG FB ISSUE:
-    ibeis -e draw_cases --db humpbacks_fb -a default:has_any=hasnotch,mingt=2,size=100 -t default:proot=BC_DTW,decision=max,crop_dim_size=500,crop_enabled=True,manual_extract=False  --show --qaid-override 468
+    python -m ibeis -e rank_cdf --db humpbacks -a default:has_any=hasnotch,mingt=2,qsize=20,dsize=100 -t default:proot=[BC_DTW_NEW,BC_DTW] --show
 
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
@@ -426,7 +425,7 @@ class TrailingEdgeConfig(dtool.TableConfig):
 
 
 @register_preproc('Trailing_Edge', ['Cropped_Chips'], ['edge', 'cost'], [np.ndarray, float],
-                    configclass=TrailingEdgeConfig)
+                    configclass=TrailingEdgeConfig, chunksize=256)
 def preproc_trailing_edge(depc, cpid_list, config=None):
     r"""
     Args:
@@ -572,8 +571,7 @@ class BlockCurvConfig(dtool.TableConfig):
 
 
 @register_preproc('Block_Curvature', ['Trailing_Edge'], ['curvature'], [np.ndarray],
-                  configclass=BlockCurvConfig
-                  )
+                  configclass=BlockCurvConfig, chunksize=256)
 def preproc_block_curvature(depc, te_rowids, config={'sizes': [5, 10, 15, 20]}):
     r"""
     Args:
@@ -846,11 +844,8 @@ def get_match_results(depc, qaid_list, daid_list, score_list, config):
     grouped_scores = ut.apply_grouping(score_list, groupxs)
 
     ibs = depc.controller
-
     unique_qnids = ibs.get_annot_nids(unique_qaids)
-
     decision_func = getattr(np, config['decision'])
-
     _iter = zip(unique_qaids, unique_qnids, grouped_daids, grouped_scores)
     for qaid, qnid, daids, scores in _iter:
         dnids = ibs.get_annot_nids(daids)
@@ -888,7 +883,7 @@ class BC_DTW_NEW_Config(BC_DTW_Config):
 class BC_DTW_NEW_Request(dtool.base.OneVsOneSimilarityRequest):
     _tablename = 'BC_DTW_NEW'
     @ut.accepts_scalar_input
-    def get_fmatch_overlayed_chip(self, aid_list, config=None):
+    def get_fmatch_overlayed_chip(request, aid_list, config=None):
         """
         import plottool as pt
         pt.ensure_pylab_qt4()
@@ -896,7 +891,7 @@ class BC_DTW_NEW_Request(dtool.base.OneVsOneSimilarityRequest):
         """
         # FIXME: THIS STRUCTURE OF TELLING HOW FEATURE
         # MATCHES SHOULD BE VISUALIZED IS NOT FINAL.
-        depc = self.depc
+        depc = request.depc
         chips = depc.get_property('Cropped_Chips', aid_list, 'img', config=config)
         points = depc.get_property('Cropped_Chips', aid_list, ('notch', 'left', 'right'),
                                    config=config)
@@ -905,13 +900,22 @@ class BC_DTW_NEW_Request(dtool.base.OneVsOneSimilarityRequest):
                          for chip, path, tips in zip(chips, tedge_list, points)]
         return overlay_chips
 
+    def postprocess_execute(request, parent_rowids, result_list):
+        qaid_list, daid_list = list(zip(*parent_rowids))
+        score_list = ut.take_column(result_list, 0)
+        depc = request.depc
+        config = request.config
+        cm_list = list(get_match_results(depc, qaid_list, daid_list,
+                                         score_list, config))
+        return cm_list
+
 
 @register_preproc(
     tablename='BC_DTW_NEW', parents=[ROOT, ROOT],
     colnames=['score'], coltypes=[float],
     configclass=BC_DTW_NEW_Config,
     requestclass=BC_DTW_NEW_Request,
-    chunksize=8)
+    chunksize=2056)
 def id_algo_bc_dtw_new(depc, qaid_list, daid_list, config):
     r"""
     CommandLine:
@@ -948,7 +952,7 @@ def id_algo_bc_dtw_new(depc, qaid_list, daid_list, config):
     else:
         curv_weights = [1.] * len(sizes)
     # Group pairs by qaid
-    if True:
+    if False:
         unique_qaids, groupxs = ut.group_indices(qaid_list)
         grouped_daids = ut.apply_grouping(daid_list, groupxs)
         # Get block curvatures
