@@ -7,6 +7,7 @@ from os.path import dirname, join
 from ibeis_flukematch.networks import (
         build_kpextractor128_decoupled,
         build_segmenter_simple,
+        build_segmenter_upsample,
         )
 import utool as ut
 import theano.tensor as T
@@ -79,7 +80,7 @@ def setup_te_network():
     network_params = ut.load_cPkl(network_params_path)
     # network_params also includes normalization constants needed for the dataset, and is assumed to be a dictionary
     # with keys mean, std, and params
-    network_exp = build_segmenter_simple()
+    network_exp = build_segmenter_upsample()
     ll.set_all_param_values(network_exp, network_params['params'])
     X = T.tensor4()
     network_fn = tfn([X], ll.get_output(network_exp, X, deterministic=True))
@@ -116,7 +117,15 @@ def score_te(img_paths, networkfn, mean, std, batch_size=32, input_size=None):
             nd_imgs = [np.expand_dims(img, axis=0) for img in batch_imgs]
             # denumpy it
             batch_outputs = [networkfn(img)[0][bg_ind] for img in nd_imgs]
-        predictions = chain(predictions, batch_outputs)
+        # resize it to the original img shape if necessary
+        batch_outputs_r = []
+        for label, img in zip(batch_outputs, batch_imgs):
+            if label.shape[:2] != img.shape[:2]:
+                batch_outputs_r.append(cv2.resize(label, img.shape[:2], cv2.INTER_LANCZOS4))
+            else:
+                batch_ouputs_r.append(label)
+
+        predictions = chain(predictions, batch_outputs_r)
     predictions = list(predictions)
     return predictions
 
@@ -209,7 +218,7 @@ def normalize_01(img):
     return norm_img
 
 
-def find_trailing_edge_cpp(img, start, end, center, n_neighbors=5, ignore_notch=False, score_mat=None):
+def find_trailing_edge_cpp(img, start, end, center, n_neighbors=5, ignore_notch=False, score_mat=None, score_weight=0.5):
     # points are x,y
     if len(img.shape) == 3:
         img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -223,7 +232,8 @@ def find_trailing_edge_cpp(img, start, end, center, n_neighbors=5, ignore_notch=
     # next question: how do we factor in the score?
     # Option 1: Just blend it in
     if score_mat is not None:
-        score_grad = np.average(np.stack([norm_grad, score_mat],axis=0),axis=0)
+        score_grad = score_weight*score_mat + (1-score_weight)*norm_grad
+        #score_grad = np.average(np.stack([norm_grad, score_mat],axis=0),axis=0)
     else:
         score_grad = norm_grad
 

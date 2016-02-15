@@ -140,9 +140,8 @@ def preproc_has_tips(depc, aid_list, config=None):
         print('[fluke-module] ERROR: Could not find image points file')
         raise NotImplementedError('Could not find image points file')
 
-    with open(fn, 'r') as f:
-        # this is a dict of img: dict of left/right/notch to the xy-point
-        img_points_map = pickle.load(f)
+    # this is a dict of img: dict of left/right/notch to the xy-point
+    img_points_map = ut.load_cPkl(fn)
 
     img_names = ibs.get_annot_image_names(aid_list)
 
@@ -419,8 +418,9 @@ class TrailingEdgeConfig(dtool.TableConfig):
             ut.ParamInfo('n_neighbors', 5, 'n_nb'),
             ut.ParamInfo('ignore_notch', False, 'ign_n', hideif=False),
             #ut.ParamInfo('teversion', 1),
-            ut.ParamInfo('version', 1),
+            ut.ParamInfo('version', 3),
             ut.ParamInfo('use_te_scorer', False, 'te_s', hideif=False),
+            ut.ParamInfo('te_score_weight', 0.5, 'w_tes'),
         ]
 
 
@@ -524,7 +524,7 @@ def preproc_trailing_edge(depc, cpid_list, config=None):
         tedge, cost = find_trailing_edge_cpp(
             img_grey, left, right, notch,
             n_neighbors=n_neighbors, ignore_notch=config['ignore_notch'],
-            score_mat=score_pred)
+            score_mat=score_pred, score_weight=config['te_score_weight'])
         yield (tedge, cost)
 
 

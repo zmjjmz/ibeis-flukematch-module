@@ -155,12 +155,12 @@ def crossentropy_flat(pred, true):
 
 def build_segmenter_simple():
     inp = ll.InputLayer(shape=(None, 1, None, None), name='input')
-    conv1 = ll.Conv2DLayer(inp, num_filters=4, filter_size=(7,7), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv1')
-    conv2 = ll.Conv2DLayer(conv1, num_filters=8, filter_size=(5,5), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv2')
-    conv3 = ll.Conv2DLayer(conv2, num_filters=16, filter_size=(5,5), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv3')
-    conv4 = ll.Conv2DLayer(conv3, num_filters=8, filter_size=(5,5), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv4')
-    conv5 = ll.Conv2DLayer(conv4, num_filters=8, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv5')
-    conv6 = ll.Conv2DLayer(conv5, num_filters=4, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv6')
+    conv1 = ll.Conv2DLayer(inp, num_filters=32, filter_size=(7,7), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv1')
+    conv2 = ll.Conv2DLayer(conv1, num_filters=64, filter_size=(5,5), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv2')
+    conv3 = ll.Conv2DLayer(conv2, num_filters=128, filter_size=(5,5), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv3')
+    conv4 = ll.Conv2DLayer(conv3, num_filters=64, filter_size=(5,5), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv4')
+    conv5 = ll.Conv2DLayer(conv4, num_filters=32, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv5')
+    conv6 = ll.Conv2DLayer(conv5, num_filters=16, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv6')
 
     # our output layer is also convolutional, remember that our Y is going to be the same exact size as the
     conv_final = ll.Conv2DLayer(conv6, num_filters=2, filter_size=(3,3), pad='same', W=Orthogonal(), name='conv_final', nonlinearity=linear)
@@ -169,5 +169,26 @@ def build_segmenter_simple():
 
     return softmax
 
-
+def build_segmenter_upsample():
+    # downsample down to a small region, then upsample all the way back up
+    # Note: w/o any learning on the upsampler, we're limited in how far we can downsample
+    # there will always be an error signal unless the loss fn is run on downsampled targets...
+    inp = ll.InputLayer(shape=(None, 1, None, None), name='input')
+    conv1 = ll.Conv2DLayer(inp, num_filters=32, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv1_1')
+    conv2 = ll.Conv2DLayer(conv1, num_filters=64, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv1_2')
+    mp1 = ll.MaxPool2DLayer(conv2, 2, stride=2, name='mp1') # 2x downsample
+    conv3 = ll.Conv2DLayer(mp1, num_filters=128, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv2_1')
+    conv4 = ll.Conv2DLayer(conv3, num_filters=128, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv2_2')
+    mp2 = ll.MaxPool2DLayer(conv4, 2, stride=2, name='mp2') # 4x downsample
+    conv5 = ll.Conv2DLayer(mp2, num_filters=128, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv3_1')
+    conv6 = ll.Conv2DLayer(conv5, num_filters=128, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv3_2')
+    mp3 = ll.MaxPool2DLayer(conv6, 2, stride=2, name='mp3') # 8x downsample
+    conv7 = ll.Conv2DLayer(mp3, num_filters=128, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv4_1')
+    conv8 = ll.Conv2DLayer(conv7, num_filters=128, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv4_2')
+    # f 68 s 8
+    # now start the upsample
+    up = ll.Upscale2DLayer(conv8, 8, name='upsample_8x')
+    conv_f = ll.Conv2DLayer(up, num_filters=2, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=linear, name='conv_final')
+    softmax = Softmax4D(conv_f, name='4dsoftmax')
+    return softmax
 
