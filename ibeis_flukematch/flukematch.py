@@ -100,6 +100,7 @@ def score_te(img_paths, networkfn, mean, std, batch_size=32, input_size=None):
             original_size = img.shape[::-1]
             batch_sizes.append(original_size)
             if input_size is not None:
+                # note that input_size should be w, h
                 img = cv2.resize(img, input_size, cv2.INTER_LANCZOS4)
             img = np.expand_dims(img, axis=0)  # add a dummy channel
             # assume zscore normalization
@@ -120,8 +121,8 @@ def score_te(img_paths, networkfn, mean, std, batch_size=32, input_size=None):
         # resize it to the original img shape if necessary
         batch_outputs_r = []
         for label, img in zip(batch_outputs, batch_imgs):
-            if label.shape[:2] != img.shape[:2]:
-                batch_outputs_r.append(cv2.resize(label, img.shape[:2], cv2.INTER_LANCZOS4))
+            if label.shape[:2] != img.shape[1:]:
+                batch_outputs_r.append(cv2.resize(label, img.shape[1:][::-1], cv2.INTER_LANCZOS4))
             else:
                 batch_ouputs_r.append(label)
 
@@ -232,6 +233,12 @@ def find_trailing_edge_cpp(img, start, end, center, n_neighbors=5, ignore_notch=
     # next question: how do we factor in the score?
     # Option 1: Just blend it in
     if score_mat is not None:
+        try:
+            assert(score_mat.shape == norm_grad.shape)
+        except AssertionError:
+            print(score_mat.shape)
+            print(norm_grad.shape)
+            raise
         score_grad = score_weight*score_mat + (1-score_weight)*norm_grad
         #score_grad = np.average(np.stack([norm_grad, score_mat],axis=0),axis=0)
     else:
