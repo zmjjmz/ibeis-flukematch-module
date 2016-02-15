@@ -6,7 +6,7 @@ CommandLine:
     python -m ibeis --tf autogen_ipynb --db humpbacks --ipynb -t default:proot=BC_DTW default:proot=vsmany -a default:has_any=hasnotch,mingt=2,qindex=0:50,dindex=0:50 --noexample
     python -m ibeis --tf autogen_ipynb --db humpbacks --ipynb -t default:proot=BC_DTW_NEW default:proot=vsmany -a default:has_any=hasnotch,mingt=2,qindex=0:50,dindex=0:50 --noexample
 
-    python -m ibeis -e rank_cdf --db humpbacks -a default:has_any=hasnotch,mingt=2,qsize=20,dsize=100 -t default:proot=[BC_DTW_NEW,BC_DTW] --show
+    python -m ibeis -e rank_cdf --db humpbacks -a default:has_any=hasnotch,mingt=2,qsize=100,dsize=100 -t default:proot=[BC_DTW_NEW,BC_DTW] --show
 
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
@@ -845,6 +845,8 @@ def get_match_results(depc, qaid_list, daid_list, score_list, config):
 
     ibs = depc.controller
     unique_qnids = ibs.get_annot_nids(unique_qaids)
+    # FIXME: decision should not be part of the config for the one-vs-one
+    # scores
     decision_func = getattr(np, config['decision'])
     _iter = zip(unique_qaids, unique_qnids, grouped_daids, grouped_scores)
     for qaid, qnid, daids, scores in _iter:
@@ -876,8 +878,7 @@ def get_match_results(depc, qaid_list, daid_list, score_list, config):
 
 
 class BC_DTW_NEW_Config(BC_DTW_Config):
-    def __init__(self, *args, **kwargs):
-        super(BC_DTW_NEW_Config, self).__init__(*args, **kwargs)
+    pass
 
 
 class BC_DTW_NEW_Request(dtool.base.OneVsOneSimilarityRequest):
@@ -925,22 +926,26 @@ def id_algo_bc_dtw_new(depc, qaid_list, daid_list, config):
         >>> # DISABLE_DOCTEST
         >>> from ibeis_flukematch.plugin import *  # NOQA
         >>> import ibeis
+        >>> # Setup Inputs
         >>> ibs, aid_list = ibeis.testdata_aids(
         >>>     defaultdb='humpbacks', a='default:has_any=hasnotch,pername=2,mingt=2,size=10')
         >>> depc = ibs.depc
-        >>> # Call function via request
-        >>> request = BC_DTW_new_Request.new(depc, aid_list, aid_list)
-        >>> am_list = request.execute()
-        >>> # Call function normally
-        >>> qaid_list, daid_list = list(zip(*ut.iprod(aid_list, aid_list)))
+        >>> root_rowids = list(zip(*ut.iprod(aid_list, aid_list)))
+        >>> qaid_list, daid_list = root_rowids
         >>> cfgdict = dict(weights=None, decision='average', sizes=(5, 10, 15, 20))
         >>> config = BC_DTW_NEW_Config(**cfgdict)
-        >>> score_list = list(id_algo_bc_dtw_new(depc, qaid_list, daid_list, config))
-        >>> match_results = list(get_match_results(depc, qaid_list, daid_list, score_list, config))
+        >>> # Call function via request
+        >>> request = BC_DTW_NEW_Request.new(depc, aid_list, aid_list)
+        >>> am_list1 = request.execute()
         >>> # Call function via depcache
-        >>> pass
+        >>> prop_list = depc.get('BC_DTW_NEW', root_rowids, config=config)
+        >>> # Call function normally
+        >>> score_list = list(id_algo_bc_dtw_new(depc, qaid_list, daid_list, config))
+        >>> am_list2 = list(get_match_results(depc, qaid_list, daid_list, score_list, config))
+        >>> assert score_list == prop_list, 'error in cache'
+        >>> assert np.all(am_list1[0].score_list == am_list2[0].score_list)
         >>> ut.quit_if_noshow()
-        >>> am = match_results[0]
+        >>> am = am_list2[0]
         >>> am.ishow_analysis(request)
         >>> ut.show_if_requested()
     """
