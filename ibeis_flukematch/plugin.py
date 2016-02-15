@@ -645,8 +645,8 @@ class BC_DTW_Config(dtool.AlgoConfig):
         >>> print(result)
         BC_DTW(decision=average,sizes=(5, 10, 15, 20),weights=None,version=1)_CropChip()
     """
-    def get_config_name(self):
-        return 'BC_DTW'
+    #def get_config_name(self):
+    #    return 'BC_DTW'
 
     def get_sub_config_list(self):
         # Different pipeline compoments can go here
@@ -694,17 +694,14 @@ class BC_DTW_Request(dtool.AlgoRequest):
         return overlay_chips
 
 
-@register_algo('BC_DTW', algo_result_class=ibeis.AnnotMatch,
-               algo_request_class=BC_DTW_Request,
-               #configclass=DEFAULT_ALGO_CONFIG,
-               configclass=BC_DTW_Config,
-               chunksize=8)
+@register_algo(
+    'BC_DTW', algo_result_class=ibeis.AnnotMatch,
+    algo_request_class=BC_DTW_Request, configclass=BC_DTW_Config, chunksize=8)
 def id_algo_bc_dtw(depc, request):
     r"""
     Args:
         depc (DependencyCache):
         qaid_list (list):
-        config (BC_DTW_Config):
 
     Yields:
         ibeis.AnnotMatch:
@@ -712,17 +709,9 @@ def id_algo_bc_dtw(depc, request):
     CommandLine:
         python -m ibeis_flukematch.plugin --exec-id_algo_bc_dtw:0 --show
         python -m ibeis_flukematch.plugin --exec-id_algo_bc_dtw --show --clear-all-depcache
-
-        ibeis -e rank_cdf --db humpbacks -t default:pipeline_root=BC_DTW --qaid-override=1,9,15,16,18 --daid-override=1,9,15,16,18,21,22  --show --clear-all-depcache --nocache
         ibeis -e rank_cdf --db humpbacks -t default:pipeline_root=BC_DTW,crop_enabled=True --qaid-override=1 --daid-override=1,9,15  --show --clear-all-depcache --nocache  --debug-depc
         ibeis -e rank_cdf --db humpbacks -t default:pipeline_root=BC_DTW -a timectrl:has_any=hasnotch --show --nocache
-
-        ibeis -e rank_cdf --db humpbacks -a ctrl:has_any=hasnotch,size=20 -t default:pipeline_root=BC_DTW --show
-
         ibeis -e rank_cdf --db humpbacks -a default:has_any=hasnotch,mingt=2 -t default:pipeline_root=BC_DTW --show  --clear-all-depcache
-
-        ibeis -e rank_cdf --db humpbacks -t default:proot=BC_DTW,decision=max,crop_dim_size=500,crop_enabled=True,manual_extract=False,use_te_scorer=True,ignore_notch=True default:proot=BC_DTW,decision=max,crop_dim_size=500,crop_enabled=True,manual_extract=False,ignore_notch=True -a ctrl:has_any=hasnotch,size=40  --show
-
 
     Example:
         >>> # DISABLE_DOCTEST
@@ -734,10 +723,8 @@ def id_algo_bc_dtw(depc, request):
         >>> depc = ibs.depc
         >>> qaids = aid_list
         >>> daids = aid_list
-        >>> cfgdict = {'weights': None, 'decision': 'average',
-        >>>            'sizes': (5, 10, 15, 20), 'crop_enabled': True}
-        >>> algoname = 'BC_DTW'
-        >>> request = depc.new_algo_request(algoname, qaids, daids, cfgdict)
+        >>> cfgdict = dict(weights=None, decision='average', sizes=(5, 10, 15, 20))
+        >>> request = depc.new_algo_request('BC_DTW', qaids, daids, cfgdict)
         >>> # Execute function
         >>> propgen = id_algo_bc_dtw(depc, request)
         >>> am_list = list(propgen)
@@ -759,8 +746,7 @@ def id_algo_bc_dtw(depc, request):
         >>> daids = aid_list[0:10]
         >>> cfgdict = {'weights': None, 'decision': 'average',
         >>>            'sizes': (5, 10, 15, 20), 'crop_enabled': True}
-        >>> algoname = 'BC_DTW'
-        >>> request = depc.new_algo_request(algoname, qaids, daids, cfgdict)
+        >>> request = depc.new_algo_request('BC_DTW', qaids, daids, cfgdict)
         >>> # Execute function
         >>> propgen = id_algo_bc_dtw(depc, request)
         >>> am_list = list(propgen)
@@ -801,6 +787,7 @@ def id_algo_bc_dtw(depc, request):
     qnid_list = ibs.get_annot_nids(qaid_list)
     dnid_list = ibs.get_annot_nids(daid_list)
 
+    #for qaid, daid in request.get_parent_rowids():
     _iter = zip(query_curvs, qaid_list, qnid_list)
     _progiter = ut.ProgressIter(_iter, lbl='Query BC_DTW',
                                 enabled=not ut.QUIET)
@@ -845,6 +832,149 @@ def id_algo_bc_dtw(depc, request):
         name_scores = np.array([decision_func(dists) for dists in grouped_annot_scores])
         match_result.set_cannonical_name_score(annot_scores, name_scores)
         yield match_result
+
+
+def get_match_results(depc, qaid_list, daid_list, score_list, config):
+    """ converts table results into format for ipython notebook """
+    #qaid_list, daid_list = request.get_parent_rowids()
+    #score_list = request.score_list
+    #config = request.config
+
+    unique_qaids, groupxs = ut.group_indices(qaid_list)
+    #grouped_qaids_list = ut.apply_grouping(qaid_list, groupxs)
+    grouped_daids = ut.apply_grouping(daid_list, groupxs)
+    grouped_scores = ut.apply_grouping(score_list, groupxs)
+
+    ibs = depc.controller
+
+    unique_qnids = ibs.get_annot_nids(unique_qaids)
+
+    decision_func = getattr(np, config['decision'])
+
+    _iter = zip(unique_qaids, unique_qnids, grouped_daids, grouped_scores)
+    for qaid, qnid, daids, scores in _iter:
+        dnids = ibs.get_annot_nids(daids)
+
+        # Remove distance to self
+        annot_scores = np.array(scores)
+        daid_list_ = np.array(daids)
+        dnid_list_ = np.array(dnids)
+
+        is_valid = (daid_list_ != qaid)
+        daid_list_ = daid_list_.compress(is_valid)
+        dnid_list_ = dnid_list_.compress(is_valid)
+        annot_scores = annot_scores.compress(is_valid)
+
+        # Hacked in version of creating an annot match object
+        match_result = ibeis.AnnotMatch()
+        match_result.qaid = qaid
+        match_result.qnid = qnid
+        match_result.daid_list = daid_list_
+        match_result.dnid_list = dnid_list_
+        match_result._update_daid_index()
+        match_result._update_unique_nid_index()
+
+        grouped_annot_scores = vt.apply_grouping(annot_scores, match_result.name_groupxs)
+        name_scores = np.array([decision_func(dists) for dists in grouped_annot_scores])
+        match_result.set_cannonical_name_score(annot_scores, name_scores)
+        yield match_result
+
+
+class BC_DTW_NEW_Config(BC_DTW_Config):
+    def __init__(self, *args, **kwargs):
+        super(BC_DTW_NEW_Config, self).__init__(*args, **kwargs)
+
+
+class BC_DTW_NEW_Request(dtool.base.OneVsOneSimilarityRequest):
+    _tablename = 'BC_DTW_NEW'
+    @ut.accepts_scalar_input
+    def get_fmatch_overlayed_chip(self, aid_list, config=None):
+        """
+        import plottool as pt
+        pt.ensure_pylab_qt4()
+        pt.imshow(overlay_chips[0])
+        """
+        # FIXME: THIS STRUCTURE OF TELLING HOW FEATURE
+        # MATCHES SHOULD BE VISUALIZED IS NOT FINAL.
+        depc = self.depc
+        chips = depc.get_property('Cropped_Chips', aid_list, 'img', config=config)
+        points = depc.get_property('Cropped_Chips', aid_list, ('notch', 'left', 'right'),
+                                   config=config)
+        tedge_list = depc.get_property('Trailing_Edge', aid_list, 'edge', config=config)
+        overlay_chips = [overlay_fluke_feats(chip, path=path, tips=tips)
+                         for chip, path, tips in zip(chips, tedge_list, points)]
+        return overlay_chips
+
+
+@register_preproc(
+    tablename='BC_DTW_NEW', parents=[ROOT, ROOT],
+    colnames=['score'], coltypes=[float],
+    configclass=BC_DTW_NEW_Config,
+    requestclass=BC_DTW_NEW_Request,
+    chunksize=8)
+def id_algo_bc_dtw_new(depc, qaid_list, daid_list, config):
+    r"""
+    CommandLine:
+        python -m ibeis_flukematch.plugin --exec-id_algo_bc_dtw_new:0 --show
+
+    Example:
+        >>> # DISABLE_DOCTEST
+        >>> from ibeis_flukematch.plugin import *  # NOQA
+        >>> import ibeis
+        >>> ibs, aid_list = ibeis.testdata_aids(
+        >>>     defaultdb='humpbacks', a='default:has_any=hasnotch,pername=2,mingt=2,size=10')
+        >>> depc = ibs.depc
+        >>> # Call function via request
+        >>> request = BC_DTW_new_Request.new(depc, aid_list, aid_list)
+        >>> am_list = request.execute()
+        >>> # Call function normally
+        >>> qaid_list, daid_list = list(zip(*ut.iprod(aid_list, aid_list)))
+        >>> cfgdict = dict(weights=None, decision='average', sizes=(5, 10, 15, 20))
+        >>> config = BC_DTW_NEW_Config(**cfgdict)
+        >>> score_list = list(id_algo_bc_dtw_new(depc, qaid_list, daid_list, config))
+        >>> match_results = list(get_match_results(depc, qaid_list, daid_list, score_list, config))
+        >>> # Call function via depcache
+        >>> pass
+        >>> ut.quit_if_noshow()
+        >>> am = match_results[0]
+        >>> am.ishow_analysis(request)
+        >>> ut.show_if_requested()
+    """
+    print('Executing BC_DTW_new')
+    curv_weights = config['weights']
+    sizes = config.block_curv_cfg['sizes']
+    if curv_weights is not None:
+        assert(len(curv_weights) == len(sizes))
+    else:
+        curv_weights = [1.] * len(sizes)
+    # Group pairs by qaid
+    if True:
+        unique_qaids, groupxs = ut.group_indices(qaid_list)
+        grouped_daids = ut.apply_grouping(daid_list, groupxs)
+        # Get block curvatures
+        query_curvs = depc.get('Block_Curvature', unique_qaids, 'curvature', config=config)
+        _progiter = ut.ProgressIter(
+            zip(qaid_list, grouped_daids, query_curvs),
+            lbl='Query BC_DTW', enabled=not ut.QUIET)
+        for qaid, daids, query_curv in _progiter:
+            db_curvs = depc.get('Block_Curvature', daid_list, 'curvature', config=config)
+            for daid, db_curv in zip(daids, db_curvs):
+                distance = get_distance_curvweighted(query_curv, db_curv,
+                                                     curv_weights,
+                                                     window=config['window'])
+                score = np.exp(-distance / 50)
+                yield (score,)
+    else:
+        all_aids = np.unique(ut.flatten([qaid_list, daid_list]))
+        all_curves = depc.get('Block_Curvature', all_aids, 'curvature', config=config)
+        aid_to_curves = dict(zip(all_aids, all_curves))
+        for qaid, daid in zip(qaid_list, daid_list):
+            query_curv = aid_to_curves[qaid]
+            db_curv = aid_to_curves[daid]
+            distance = get_distance_curvweighted(query_curv, db_curv, curv_weights,
+                                                 window=config['window'])
+            score = np.exp(-distance / 50)
+            yield (score,)
 
 
 if __name__ == '__main__':
