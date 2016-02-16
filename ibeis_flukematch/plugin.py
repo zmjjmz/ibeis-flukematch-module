@@ -1,13 +1,15 @@
 # -*- coding: utf-8 -*-
 r"""
 CommandLine:
-    # Small baseline test of algorithm
-    python -m ibeis -e rank_cdf --db humpbacks -a default:has_any=hasnotch,mingt=2,size=50 -t default:proot=BC_DTW --show
-    python -m ibeis -e rank_cdf --db humpbacks -a default:has_any=hasnotch,mingt=2,size=50 -t default:proot=BC_DTW --show
-    python -m ibeis --tf autogen_ipynb --ipynb --db humpbacks -a default:has_any=hasnotch,mingt=2,size=50 -t default:proot=BC_DTW --show
+    # Small baseline test of algorithm in matplotlib
+    python -m ibeis -e rank_cdf --db humpbacks \
+        -a default:has_any=hasnotch,mingt=2,size=50
+        -t default:proot=BC_DTW --show
 
-    # Baseline test of algorithm in ipynb
-    python -m ibeis --tf autogen_ipynb --ipynb --db humpbacks -a default:has_any=hasnotch -t default:proot=BC_DTW
+    # Small baseline test of algorithm in ipynb
+    python -m ibeis --tf autogen_ipynb --ipynb --db humpbacks \
+        -a default:has_any=hasnotch,mingt=2,size=50 \
+        -t default:proot=BC_DTW
 
     # Compare manual vs cnn notch points
     python -m ibeis --tf autogen_ipynb --db humpbacks --ipynb \
