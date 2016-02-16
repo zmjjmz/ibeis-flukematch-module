@@ -1,13 +1,23 @@
 # -*- coding: utf-8 -*-
-"""
+r"""
 CommandLine:
-    python -m ibeis --tf autogen_ipynb --db humpbacks --ipynb -t default:proot=BC_DTW -a default:has_any=hasnotch
-    python -m ibeis --tf autogen_ipynb --db humpbacks -a default:has_any=hasnotch -t default:proot=BC_DTW,manual_extract=True default:proot=BC_DTW,manual_extract=True
-    python -m ibeis --tf autogen_ipynb --db humpbacks --ipynb -t default:proot=BC_DTW default:proot=vsmany -a default:has_any=hasnotch,mingt=2,qindex=0:50,dindex=0:50 --noexample
-    python -m ibeis --tf autogen_ipynb --db humpbacks --ipynb -t default:proot=BC_DTW_NEW default:proot=vsmany -a default:has_any=hasnotch,mingt=2,qindex=0:50,dindex=0:50 --noexample
+    # Small baseline test of algorithm
+    python -m ibeis -e rank_cdf --db humpbacks \
+        -a default:has_any=hasnotch,mingt=2,size=50 \
+        -t default:proot=BC_DTW --show
 
-    python -m ibeis -e rank_cdf --db humpbacks -a default:has_any=hasnotch,mingt=2,qsize=100,dsize=100 -t default:proot=[BC_DTW_NEW,BC_DTW] --show
+    # Baseline test of algorithm in ipynb
+    python -m ibeis --tf autogen_ipynb --db humpbacks --ipynb -a default:has_any=hasnotch -t default:proot=BC_DTW
 
+    # Compare manual vs cnn notch points
+    python -m ibeis --tf autogen_ipynb --db humpbacks --ipynb \
+        -a default:has_any=hasnotch \
+        -t default:proot=BC_DTW,manual_extract=[True,False]
+
+    # Compare BC_DTW vs Hotspotter
+    python -m ibeis --tf autogen_ipynb --db humpbacks --ipynb --noexample \
+        -a default:has_any=hasnotch,mingt=2,qindex=0:50,dindex=0:50 \
+        -t default:proot=BC_DTW default:proot=vsmany \
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
 import ibeis
@@ -20,7 +30,7 @@ from os.path import join, exists
 import cPickle as pickle
 from ibeis import constants as const
 #from collections import defaultdict
-from ibeis import register_preproc, register_algo
+from ibeis import register_preproc
 from ibeis_flukematch.flukematch import (find_trailing_edge_cpp,
                                          block_integral_curvatures_cpp,
                                          get_distance_curvweighted,
@@ -29,9 +39,6 @@ from ibeis_flukematch.flukematch import (find_trailing_edge_cpp,
                                          setup_te_network,
                                          score_te,)
 (print, rrr, profile) = ut.inject2(__name__, '[flukeplug]')
-
-#register_preproc = lambda *args, **kwargs: ut.identity
-#register_algo = lambda *args, **kwargs: ut.identity
 
 ROOT = ibeis.const.ANNOTATION_TABLE
 
@@ -79,7 +86,7 @@ def debug_depcache(ibs):
     print('notch_tip_deps = %r' % (notch_tip_deps,))
     ibs.depc.print_schemas()
     try:
-        ibs.depc.show_digraph()
+        ibs.depc.show_graph()
     except Exception as ex:
         ut.printex(ex, iswarning=True)
 
@@ -246,7 +253,8 @@ def preproc_notch_tips(depc, cid_list, config=None):
     else:
         network_data = setup_kp_network()
         # process all the points at once
-        # TODO: Is this the best way to do this? Or should we do it in the main loop? Another preproc node?
+        # TODO: Is this the best way to do this? Or should we do it in the main
+        # loop? Another preproc node?
         img_paths = depc.get_native_property(const.CHIP_TABLE, cid_list, 'img',
                                              read_extern=False)
         # assume infer_kp handles the bounds checking / snapping
@@ -627,211 +635,6 @@ def preproc_block_curvature(depc, te_rowids, config={'sizes': [5, 10, 15, 20]}):
         yield (curve_arr,)
 
 
-class BC_DTW_Config(dtool.AlgoConfig):
-    """
-    CommandLine:
-        python -m ibeis_flukematch.plugin --exec-BC_DTW_Config --show
-
-    IPython:
-        ut.execute_doctest('BC_DTW_Config', module='ibeis_flukematch.plugin')
-
-    Example:
-        >>> # ENABLE_DOCTEST
-        >>> from ibeis_flukematch.plugin import *  # NOQA
-        >>> config = BC_DTW_Config()
-        >>> result = config.get_cfgstr()
-        >>> print(result)
-        BC_DTW(decision=average,sizes=(5, 10, 15, 20),weights=None,version=1)_CropChip()
-    """
-    #def get_config_name(self):
-    #    return 'BC_DTW'
-
-    def get_sub_config_list(self):
-        # Different pipeline compoments can go here
-        # as well as dependencies that were not
-        # explicitly enumerated in the tree structure
-        return [
-            # I guess different annots might want different configs ...
-            NotchTipConfig,
-            CropChipConfig,
-            TrailingEdgeConfig,
-            BlockCurvConfig,
-        ]
-
-    def get_param_info_list(self):
-        return [
-            #ut.ParamInfo('score_method', 'csum'),
-            # should this be the only thing here?
-            #ut.ParamInfo('daids', None),
-            ut.ParamInfo('decision', 'average'),
-            #ut.ParamInfo('sizes', (5, 10, 15, 20)),
-            ut.ParamInfo('weights', None),
-            ut.ParamInfo('window', 50),
-            #ut.ParamInfo('bcdtwversion', 1),
-            ut.ParamInfo('version', 1),
-        ]
-
-
-class BC_DTW_Request(dtool.AlgoRequest):
-    @ut.accepts_scalar_input
-    def get_fmatch_overlayed_chip(self, aid_list, config=None):
-        """
-        import plottool as pt
-        pt.ensure_pylab_qt4()
-        pt.imshow(overlay_chips[0])
-        """
-        # FIXME: THIS STRUCTURE OF TELLING HOW FEATURE
-        # MATCHES SHOULD BE VISUALIZED IS NOT FINAL.
-        depc = self.depc
-        chips = depc.get_property('Cropped_Chips', aid_list, 'img', config=config)
-        points = depc.get_property('Cropped_Chips', aid_list, ('notch', 'left', 'right'),
-                                   config=config)
-        tedge_list = depc.get_property('Trailing_Edge', aid_list, 'edge', config=config)
-        overlay_chips = [overlay_fluke_feats(chip, path=path, tips=tips)
-                         for chip, path, tips in zip(chips, tedge_list, points)]
-        return overlay_chips
-
-
-@register_algo(
-    'BC_DTW', algo_result_class=ibeis.AnnotMatch,
-    algo_request_class=BC_DTW_Request, configclass=BC_DTW_Config, chunksize=8)
-def id_algo_bc_dtw(depc, request):
-    r"""
-    Args:
-        depc (DependencyCache):
-        qaid_list (list):
-
-    Yields:
-        ibeis.AnnotMatch:
-
-    CommandLine:
-        python -m ibeis_flukematch.plugin --exec-id_algo_bc_dtw:0 --show
-        python -m ibeis_flukematch.plugin --exec-id_algo_bc_dtw --show --clear-all-depcache
-        ibeis -e rank_cdf --db humpbacks -t default:pipeline_root=BC_DTW,crop_enabled=True --qaid-override=1 --daid-override=1,9,15  --show --clear-all-depcache --nocache  --debug-depc
-        ibeis -e rank_cdf --db humpbacks -t default:pipeline_root=BC_DTW -a timectrl:has_any=hasnotch --show --nocache
-        ibeis -e rank_cdf --db humpbacks -a default:has_any=hasnotch,mingt=2 -t default:pipeline_root=BC_DTW --show  --clear-all-depcache
-
-    Example:
-        >>> # DISABLE_DOCTEST
-        >>> from ibeis_flukematch.plugin import *  # NOQA
-        >>> import ibeis
-        >>> ibs, aid_list = ibeis.testdata_aids(
-        >>>     defaultdb='humpbacks', a='default:has_any=hasnotch,pername=2,mingt=2,size=10')
-        >>> ibs.print_annot_stats(aid_list)
-        >>> depc = ibs.depc
-        >>> qaids = aid_list
-        >>> daids = aid_list
-        >>> cfgdict = dict(weights=None, decision='average', sizes=(5, 10, 15, 20))
-        >>> request = depc.new_algo_request('BC_DTW', qaids, daids, cfgdict)
-        >>> # Execute function
-        >>> propgen = id_algo_bc_dtw(depc, request)
-        >>> am_list = list(propgen)
-        >>> print('\n'.join(ut.lmap(str, am_list)))
-        >>> result1 = (ut.repr2(np.vstack([am.annot_score_list for am in am_list]), precision=2))
-        >>> print(result1)
-        >>> am = am_list[0]
-        >>> am.ishow_analysis(request)
-        >>> ut.show_if_requested()
-
-    Example:
-        >>> # DISABLE_DOCTEST
-        >>> from ibeis_flukematch.plugin import *  # NOQA
-        >>> import ibeis
-        >>> ibs, aid_list = ibeis.testdata_aids(
-        >>>     defaultdb='humpbacks', a='default:has_any=hasnotch,pername=2,mingt=2,size=10')
-        >>> depc = ibs.depc
-        >>> qaids = aid_list[0:10]
-        >>> daids = aid_list[0:10]
-        >>> cfgdict = {'weights': None, 'decision': 'average',
-        >>>            'sizes': (5, 10, 15, 20), 'crop_enabled': True}
-        >>> request = depc.new_algo_request('BC_DTW', qaids, daids, cfgdict)
-        >>> # Execute function
-        >>> propgen = id_algo_bc_dtw(depc, request)
-        >>> am_list = list(propgen)
-        >>> result1 = (ut.repr2(np.vstack([am.annot_score_list for am in am_list]),
-        >>>                     precision=2))
-        >>> am = am_list[0]
-        >>> # Execute via cache
-        >>> am_list2 = request.execute()
-        >>> result2 = (ut.repr2(np.vstack([am.annot_score_list
-        >>>                                for am in am_list2]), precision=2))
-        >>> print(result1)
-        >>> assert result1 == result2, 'cache does not aggree with non-cache'
-    """
-    print('Executing BC_DTW')
-    print(request)
-
-    qaid_list = request.qaids
-    daid_list = request.daids
-    config = request.config
-
-    #assert(config['daid_list'] is not None)
-
-    curv_weights = config['weights']
-    sizes = config.block_curv_cfg['sizes']
-    if curv_weights is not None:
-        assert(len(curv_weights) == len(sizes))
-    else:
-        curv_weights = [1.] * len(sizes)
-    ibs = depc.controller
-
-    # Get block curvatures
-    #block_config = config.block_curv_cfg
-    query_curvs = depc.get_property(
-        'Block_Curvature', qaid_list, 'curvature', config=config)
-    db_curvs = depc.get_property(
-        'Block_Curvature', daid_list, 'curvature', config=config)
-
-    qnid_list = ibs.get_annot_nids(qaid_list)
-    dnid_list = ibs.get_annot_nids(daid_list)
-
-    #for qaid, daid in request.get_parent_rowids():
-    _iter = zip(query_curvs, qaid_list, qnid_list)
-    _progiter = ut.ProgressIter(_iter, lbl='Query BC_DTW',
-                                enabled=not ut.QUIET)
-
-    for query_curv, qaid, qnid in _progiter:
-        #dists_by_nid = defaultdict(list)
-        daid_dists = []
-        for db_curv, daid, dnid in zip(db_curvs, daid_list, dnid_list):
-            distance = get_distance_curvweighted(query_curv, db_curv,
-                                                 curv_weights,
-                                                 window=config['window'])
-            #score = -1 * distance
-            score = np.exp(-distance / 50)
-            daid_dists.append(score)
-            #dists_by_nid[dnid].append(-1 * distance)
-
-        decision_func = getattr(np, config['decision'])
-        #dists_by_nid = {dnid: decision_func(
-        #    dists_by_nid[dnid]) for dnid in dists_by_nid}
-        #dnid_dists = [dists_by_nid[dnid] for dnid in dnid_list]
-
-        # Remove distance to self
-        annot_scores = np.array(daid_dists)
-        daid_list_ = np.array(daid_list)
-        dnid_list_ = np.array(dnid_list)
-
-        is_valid = (daid_list_ != qaid)
-        daid_list_ = daid_list_.compress(is_valid)
-        dnid_list_ = dnid_list_.compress(is_valid)
-        annot_scores = annot_scores.compress(is_valid)
-
-        # Hacked in version of creating an annot match object
-        match_result = ibeis.AnnotMatch()
-        match_result.qaid = qaid
-        match_result.qnid = qnid
-        match_result.daid_list = daid_list_
-        match_result.dnid_list = dnid_list_
-        match_result._update_daid_index()
-        match_result._update_unique_nid_index()
-
-        grouped_annot_scores = vt.apply_grouping(annot_scores, match_result.name_groupxs)
-        name_scores = np.array([decision_func(dists) for dists in grouped_annot_scores])
-        match_result.set_cannonical_name_score(annot_scores, name_scores)
-        yield match_result
-
-
 def get_match_results(depc, qaid_list, daid_list, score_list, config):
     """ converts table results into format for ipython notebook """
     #qaid_list, daid_list = request.get_parent_rowids()
@@ -877,12 +680,50 @@ def get_match_results(depc, qaid_list, daid_list, score_list, config):
         yield match_result
 
 
-class BC_DTW_NEW_Config(BC_DTW_Config):
-    pass
+class BC_DTW_Config(dtool.AlgoConfig):
+    """
+    CommandLine:
+        python -m ibeis_flukematch.plugin --exec-BC_DTW_Config --show
+
+    IPython:
+        ut.execute_doctest('BC_DTW_Config', module='ibeis_flukematch.plugin')
+
+    Example:
+        >>> # ENABLE_DOCTEST
+        >>> from ibeis_flukematch.plugin import *  # NOQA
+        >>> config = BC_DTW_Config()
+        >>> result = config.get_cfgstr()
+        >>> print(result)
+        BC_DTW(decision=average,sizes=(5, 10, 15, 20),weights=None,version=1)_CropChip()
+    """
+    def get_sub_config_list(self):
+        # Different pipeline compoments can go here
+        # as well as dependencies that were not
+        # explicitly enumerated in the tree structure
+        return [
+            # I guess different annots might want different configs ...
+            NotchTipConfig,
+            CropChipConfig,
+            TrailingEdgeConfig,
+            BlockCurvConfig,
+        ]
+
+    def get_param_info_list(self):
+        return [
+            #ut.ParamInfo('score_method', 'csum'),
+            # should this be the only thing here?
+            #ut.ParamInfo('daids', None),
+            ut.ParamInfo('decision', 'average'),
+            #ut.ParamInfo('sizes', (5, 10, 15, 20)),
+            ut.ParamInfo('weights', None),
+            ut.ParamInfo('window', 50),
+            #ut.ParamInfo('bcdtwversion', 1),
+            ut.ParamInfo('version', 2),
+        ]
 
 
-class BC_DTW_NEW_Request(dtool.base.OneVsOneSimilarityRequest):
-    _tablename = 'BC_DTW_NEW'
+class BC_DTW_Request(dtool.base.VsOneSimilarityRequest):
+    _tablename = 'BC_DTW'
     @ut.accepts_scalar_input
     def get_fmatch_overlayed_chip(request, aid_list, config=None):
         """
@@ -912,15 +753,15 @@ class BC_DTW_NEW_Request(dtool.base.OneVsOneSimilarityRequest):
 
 
 @register_preproc(
-    tablename='BC_DTW_NEW', parents=[ROOT, ROOT],
+    tablename='BC_DTW', parents=[ROOT, ROOT],
     colnames=['score'], coltypes=[float],
-    configclass=BC_DTW_NEW_Config,
-    requestclass=BC_DTW_NEW_Request,
+    configclass=BC_DTW_Config,
+    requestclass=BC_DTW_Request,
     chunksize=2056)
-def id_algo_bc_dtw_new(depc, qaid_list, daid_list, config):
+def id_algo_bc_dtw(depc, qaid_list, daid_list, config):
     r"""
     CommandLine:
-        python -m ibeis_flukematch.plugin --exec-id_algo_bc_dtw_new:0 --show
+        python -m ibeis_flukematch.plugin --exec-id_algo_bc_dtw:0 --show
 
     Example:
         >>> # DISABLE_DOCTEST
@@ -933,14 +774,14 @@ def id_algo_bc_dtw_new(depc, qaid_list, daid_list, config):
         >>> root_rowids = list(zip(*ut.iprod(aid_list, aid_list)))
         >>> qaid_list, daid_list = root_rowids
         >>> cfgdict = dict(weights=None, decision='average', sizes=(5, 10, 15, 20))
-        >>> config = BC_DTW_NEW_Config(**cfgdict)
+        >>> config = BC_DTW_Config(**cfgdict)
         >>> # Call function via request
-        >>> request = BC_DTW_NEW_Request.new(depc, aid_list, aid_list)
+        >>> request = BC_DTW_Request.new(depc, aid_list, aid_list)
         >>> am_list1 = request.execute()
         >>> # Call function via depcache
-        >>> prop_list = depc.get('BC_DTW_NEW', root_rowids, config=config)
+        >>> prop_list = depc.get('BC_DTW', root_rowids, config=config)
         >>> # Call function normally
-        >>> score_list = list(id_algo_bc_dtw_new(depc, qaid_list, daid_list, config))
+        >>> score_list = list(id_algo_bc_dtw(depc, qaid_list, daid_list, config))
         >>> am_list2 = list(get_match_results(depc, qaid_list, daid_list, score_list, config))
         >>> assert score_list == prop_list, 'error in cache'
         >>> assert np.all(am_list1[0].score_list == am_list2[0].score_list)
@@ -949,7 +790,7 @@ def id_algo_bc_dtw_new(depc, qaid_list, daid_list, config):
         >>> am.ishow_analysis(request)
         >>> ut.show_if_requested()
     """
-    print('Executing BC_DTW_new')
+    print('Executing BC_DTW')
     curv_weights = config['weights']
     sizes = config.block_curv_cfg['sizes']
     if curv_weights is not None:
