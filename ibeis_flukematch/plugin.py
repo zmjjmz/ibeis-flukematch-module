@@ -147,9 +147,8 @@ def preproc_has_tips(depc, aid_list, config=None):
         print('[fluke-module] ERROR: Could not find image points file')
         raise NotImplementedError('Could not find image points file')
 
-    with open(fn, 'r') as f:
-        # this is a dict of img: dict of left/right/notch to the xy-point
-        img_points_map = pickle.load(f)
+    # this is a dict of img: dict of left/right/notch to the xy-point
+    img_points_map = ut.load_cPkl(fn)
 
     img_names = ibs.get_annot_image_names(aid_list)
 
@@ -404,7 +403,7 @@ def preproc_cropped_chips(depc, cid_list, tipid_list, config=None):
         yield (path, bbox[2], bbox[3], M, notch_, left_, right_)
 
 
-def overlay_fluke_feats(img, path=None, tips=None):
+def overlay_fluke_feats(img, path=None, tips=None, score_pred=None):
     img_copy = img[:]
     # assume path is x, y
     if path is not None:
@@ -427,12 +426,13 @@ class TrailingEdgeConfig(dtool.TableConfig):
             ut.ParamInfo('n_neighbors', 5, 'n_nb'),
             ut.ParamInfo('ignore_notch', False, 'ign_n', hideif=False),
             #ut.ParamInfo('teversion', 1),
-            ut.ParamInfo('version', 1),
+            ut.ParamInfo('version', 5),
             ut.ParamInfo('use_te_scorer', False, 'te_s', hideif=False),
+            ut.ParamInfo('te_score_weight', 0.5, 'w_tes'),
         ]
 
 
-@register_preproc('Trailing_Edge', ['Cropped_Chips'], ['edge', 'cost'], [np.ndarray, float],
+@register_preproc('Trailing_Edge', ['Cropped_Chips'], ['edge', 'cost', 'te_score'], [np.ndarray, float, np.ndarray],
                     configclass=TrailingEdgeConfig, chunksize=256)
 def preproc_trailing_edge(depc, cpid_list, config=None):
     r"""
@@ -532,8 +532,8 @@ def preproc_trailing_edge(depc, cpid_list, config=None):
         tedge, cost = find_trailing_edge_cpp(
             img_grey, left, right, notch,
             n_neighbors=n_neighbors, ignore_notch=config['ignore_notch'],
-            score_mat=score_pred)
-        yield (tedge, cost)
+            score_mat=score_pred, score_weight=config['te_score_weight'])
+        yield (tedge, cost, score_pred)
 
 
 #def preproc_binarized(coords, sizes):
