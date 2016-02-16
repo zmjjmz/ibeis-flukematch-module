@@ -390,7 +390,11 @@ def preproc_cropped_chips(depc, cid_list, tipid_list, config=None):
             #ratio = bbox[2] / bbox[3]  # w/h
             #new_y = int(new_x / ratio)
             #chip_size = (new_x, new_y)
-            chip_size = vt.get_scaled_size_with_width(new_x, bbox[2], bbox[3])
+            try:
+                print("[cropped-chips] bbox: %r" % (bbox,))
+                chip_size = vt.get_scaled_size_with_width(new_x, bbox[2], bbox[3])
+            except Exception:
+                raise
         M = vt.get_image_to_chip_transform(bbox, chip_size, 0)
         with ut.embed_on_exception_context:
             new_img = cv2.warpAffine(img, M[:-1, :], chip_size)
