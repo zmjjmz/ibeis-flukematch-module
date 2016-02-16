@@ -767,6 +767,11 @@ def id_algo_bc_dtw(depc, qaid_list, daid_list, config):
     CommandLine:
         python -m ibeis_flukematch.plugin --exec-id_algo_bc_dtw:0 --show
 
+        # IBEIS Experiments
+        ibeis -e draw_cases --db humpbacks --show \
+           -a default:has_any=hasnotch,mingt=2,size=50 \
+           -t default:proot=BC_DTW -f :fail=False,index=0:3,sortdsc=gtscore,max_pername=1
+
     Example:
         >>> # DISABLE_DOCTEST
         >>> from ibeis_flukematch.plugin import *  # NOQA
