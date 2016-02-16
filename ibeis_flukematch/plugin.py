@@ -2,12 +2,12 @@
 r"""
 CommandLine:
     # Small baseline test of algorithm
-    python -m ibeis -e rank_cdf --db humpbacks \
-        -a default:has_any=hasnotch,mingt=2,size=50 \
-        -t default:proot=BC_DTW --show
+    python -m ibeis -e rank_cdf --db humpbacks -a default:has_any=hasnotch,mingt=2,size=50 -t default:proot=BC_DTW --show
+    python -m ibeis -e rank_cdf --db humpbacks -a default:has_any=hasnotch,mingt=2,size=50 -t default:proot=BC_DTW --show
+    python -m ibeis --tf autogen_ipynb --ipynb --db humpbacks -a default:has_any=hasnotch,mingt=2,size=50 -t default:proot=BC_DTW --show
 
     # Baseline test of algorithm in ipynb
-    python -m ibeis --tf autogen_ipynb --db humpbacks --ipynb -a default:has_any=hasnotch -t default:proot=BC_DTW
+    python -m ibeis --tf autogen_ipynb --ipynb --db humpbacks -a default:has_any=hasnotch -t default:proot=BC_DTW
 
     # Compare manual vs cnn notch points
     python -m ibeis --tf autogen_ipynb --db humpbacks --ipynb \
@@ -27,7 +27,7 @@ import numpy as np
 import vtool as vt
 import cv2
 from os.path import join, exists
-import cPickle as pickle
+from six.moves import cPickle as pickle  # NOQA
 from ibeis import constants as const
 #from collections import defaultdict
 from ibeis import register_preproc
@@ -162,7 +162,7 @@ def preproc_has_tips(depc, aid_list, config=None):
             yield (True,)
 
 
-class NotchTipConfig(dtool.TableConfig):
+class NotchTipConfig(dtool.Config):
     def get_param_info_list(self):
         return [
             ut.ParamInfo('manual_extract', False, hideif=False),
@@ -303,7 +303,7 @@ def preproc_notch_tips(depc, cid_list, config=None):
                 'ERROR: aid=%r has associated points that are out of bounds' % (aid,))
 
 
-class CropChipConfig(dtool.TableConfig):
+class CropChipConfig(dtool.Config):
     def get_param_info_list(self):
         return [
             ut.ParamInfo('crop_dim_size', 960, 'sz', hideif=lambda cfg: cfg['crop_enabled'] is False or cfg['crop_dim_size'] is None),
@@ -420,7 +420,7 @@ def overlay_fluke_feats(img, path=None, tips=None, score_pred=None):
     return img_copy
 
 
-class TrailingEdgeConfig(dtool.TableConfig):
+class TrailingEdgeConfig(dtool.Config):
     def get_param_info_list(self):
         return [
             ut.ParamInfo('n_neighbors', 5, 'n_nb'),
@@ -432,8 +432,10 @@ class TrailingEdgeConfig(dtool.TableConfig):
         ]
 
 
-@register_preproc('Trailing_Edge', ['Cropped_Chips'], ['edge', 'cost', 'te_score'], [np.ndarray, float, np.ndarray],
-                    configclass=TrailingEdgeConfig, chunksize=256)
+@register_preproc(
+    'Trailing_Edge', ['Cropped_Chips'], ['edge', 'cost', 'te_score'],
+    [np.ndarray, float, np.ndarray], configclass=TrailingEdgeConfig,
+    chunksize=256)
 def preproc_trailing_edge(depc, cpid_list, config=None):
     r"""
     Args:
@@ -462,11 +464,11 @@ def preproc_trailing_edge(depc, cpid_list, config=None):
         >>> aid_list = ut.compress(all_aids, isvalid)[0:10]
         >>> print('aid_list = %r' % (aid_list,))
         >>> depc = ibs.depc
-        >>> config = {'n_neighbors': 5, 'crop_enabled': True}
+        >>> config = TrailingEdgeConfig(**{'n_neighbors': 5, 'crop_enabled': True})
         >>> cpid_list = ibs.depc.get_rowids('Cropped_Chips', aid_list, config)
         >>> propgen = preproc_trailing_edge(depc, cpid_list, config)
         >>> results = list(propgen)
-        >>> tedge_list, cost_list = list(zip(*results))
+        >>> tedge_list, cost_list = list(zip(*results))[0:2]
         >>> print('tedge_list = %r' % (tedge_list,))
         >>> print('cost_list = %r' % (cost_list,))
         >>> ut.quit_if_noshow()
@@ -571,7 +573,7 @@ def preproc_trailing_edge(depc, cpid_list, config=None):
 #                          summed_table.shape[1], fixed_coords,
 #                          fixed_coords.shape[0], size, curv)
 
-class BlockCurvConfig(dtool.TableConfig):
+class BlockCurvConfig(dtool.Config):
     def get_param_info_list(self):
         return [
             ut.ParamInfo('sizes', (5, 10, 15, 20)),
@@ -680,7 +682,7 @@ def get_match_results(depc, qaid_list, daid_list, score_list, config):
         yield match_result
 
 
-class BC_DTW_Config(dtool.AlgoConfig):
+class BC_DTW_Config(dtool.Config):
     """
     CommandLine:
         python -m ibeis_flukematch.plugin --exec-BC_DTW_Config --show
