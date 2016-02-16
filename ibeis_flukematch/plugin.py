@@ -391,7 +391,7 @@ def preproc_cropped_chips(depc, cid_list, tipid_list, config=None):
             #new_y = int(new_x / ratio)
             #chip_size = (new_x, new_y)
             try:
-                print("[cropped-chips] bbox: %r" % (bbox,))
+                #print("[cropped-chips] %s: bbox: %r, l/n/r %r" % (path, bbox,tips))
                 chip_size = vt.get_scaled_size_with_width(new_x, bbox[2], bbox[3])
             except Exception:
                 raise
