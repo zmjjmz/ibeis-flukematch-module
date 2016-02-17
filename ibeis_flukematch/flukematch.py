@@ -42,7 +42,8 @@ def infer_kp(img_paths, networkfn, mean, std, batch_size=32, input_size=(128, 12
     >>> pt.imshow(overlay_fluke_feats((img[0] * std + mean), tips=batch_outputs[0] * 128))
     """
     # load up the images in batches
-    nbatches = (len(img_paths) // batch_size) + 1
+    import math
+    nbatches = math.ceil(len(img_paths) / batch_size)
     predictions = []
     for batch_ind in range(nbatches):
         batch_slice = slice(batch_ind * batch_size, (batch_ind + 1) * batch_size)
