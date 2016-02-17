@@ -43,7 +43,7 @@ def infer_kp(img_paths, networkfn, mean, std, batch_size=32, input_size=(128, 12
     """
     # load up the images in batches
     import math
-    nbatches = math.ceil(len(img_paths) / batch_size)
+    nbatches = int(math.ceil(len(img_paths) / batch_size))
     predictions = []
     for batch_ind in range(nbatches):
         batch_slice = slice(batch_ind * batch_size, (batch_ind + 1) * batch_size)
