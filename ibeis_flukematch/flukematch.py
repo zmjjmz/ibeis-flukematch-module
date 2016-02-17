@@ -124,7 +124,7 @@ def score_te(img_paths, networkfn, mean, std, batch_size=32, input_size=None):
             if label.shape[:2] != img.shape[1:]:
                 batch_outputs_r.append(cv2.resize(label, img.shape[1:][::-1], cv2.INTER_LANCZOS4))
             else:
-                batch_ouputs_r.append(label)
+                batch_outputs_r.append(label)
 
         predictions = chain(predictions, batch_outputs_r)
     predictions = list(predictions)
@@ -245,15 +245,19 @@ def find_trailing_edge_cpp(img, start, end, center, n_neighbors=5, ignore_notch=
         score_grad = norm_grad
 
 
-    score_grad[:, start[0]] = 1 * np.inf
-    score_grad[start[1], start[0]] = 0
+    try:
+        score_grad[:, start[0]] = 1 * np.inf
+        score_grad[start[1], start[0]] = 0
 
-    score_grad[:, end[0]] = 1 * np.inf
-    score_grad[end[1], end[0]] = 0
+        score_grad[:, end[0]] = 1 * np.inf
+        score_grad[end[1], end[0]] = 0
 
-    if not ignore_notch:
-        score_grad[:, center[0]] = 1 * np.inf
-        score_grad[center[1], center[0]] = 0
+        if not ignore_notch:
+            score_grad[:, center[0]] = 1 * np.inf
+            score_grad[center[1], center[0]] = 0
+    except IndexError:
+        print("[find_te] Bad points: start: %s, end: %s, center: %s" % (start, end, center))
+        raise
 
     outpath = np.zeros((end[0] - start[0], 2), dtype=np.int32)
     cost = find_te(score_grad, score_grad.shape[0],

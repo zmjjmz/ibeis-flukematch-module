@@ -393,8 +393,9 @@ def preproc_cropped_chips(depc, cid_list, tipid_list, config=None):
             try:
                 #print("[cropped-chips] %s: bbox: %r, l/n/r %r" % (path, bbox,tips))
                 chip_size = vt.get_scaled_size_with_width(new_x, bbox[2], bbox[3])
-            except Exception:
-                raise
+            except OverflowError:
+                print("[cropped chip] WARNING: Probably got a bad keypoint prediction: bbox: %r" % (bbox,))
+                yield None
         M = vt.get_image_to_chip_transform(bbox, chip_size, 0)
         with ut.embed_on_exception_context:
             new_img = cv2.warpAffine(img, M[:-1, :], chip_size)
@@ -537,10 +538,14 @@ def preproc_trailing_edge(depc, cpid_list, config=None):
         right = fix_point(right.round().astype(np.int))
         notch = fix_point(notch.round().astype(np.int))
         # TODO: find_trailing_edge should work to subpixel accuracy
-        tedge, cost = find_trailing_edge_cpp(
-            img_grey, left, right, notch,
-            n_neighbors=n_neighbors, ignore_notch=config['ignore_notch'],
-            score_mat=score_pred, score_weight=config['te_score_weight'])
+        try:
+            tedge, cost = find_trailing_edge_cpp(
+                img_grey, left, right, notch,
+                n_neighbors=n_neighbors, ignore_notch=config['ignore_notch'],
+                score_mat=score_pred, score_weight=config['te_score_weight'])
+        except IndexError as ie:
+            print("Bad points for %s: %r" % (img_path, point_set))
+            yield None
         yield (tedge, cost, score_pred)
 
 
@@ -752,7 +757,8 @@ class BC_DTW_Request(dtool.base.VsOneSimilarityRequest):
 
     def postprocess_execute(request, parent_rowids, result_list):
         qaid_list, daid_list = list(zip(*parent_rowids))
-        score_list = ut.take_column(result_list, 0)
+        score_list = [i[0] if i is not None else 0.0 for i in result_list]
+        #score_list = ut.take_column(result_list, 0)
         depc = request.depc
         config = request.config
         cm_list = list(get_match_results(depc, qaid_list, daid_list,
@@ -811,29 +817,15 @@ def id_algo_bc_dtw(depc, qaid_list, daid_list, config):
     else:
         curv_weights = [1.] * len(sizes)
     # Group pairs by qaid
-    if False:
-        unique_qaids, groupxs = ut.group_indices(qaid_list)
-        grouped_daids = ut.apply_grouping(daid_list, groupxs)
-        # Get block curvatures
-        query_curvs = depc.get('Block_Curvature', unique_qaids, 'curvature', config=config)
-        _progiter = ut.ProgressIter(
-            zip(qaid_list, grouped_daids, query_curvs),
-            lbl='Query BC_DTW', enabled=not ut.QUIET)
-        for qaid, daids, query_curv in _progiter:
-            db_curvs = depc.get('Block_Curvature', daid_list, 'curvature', config=config)
-            for daid, db_curv in zip(daids, db_curvs):
-                distance = get_distance_curvweighted(query_curv, db_curv,
-                                                     curv_weights,
-                                                     window=config['window'])
-                score = np.exp(-distance / 50)
-                yield (score,)
-    else:
-        all_aids = np.unique(ut.flatten([qaid_list, daid_list]))
-        all_curves = depc.get('Block_Curvature', all_aids, 'curvature', config=config)
-        aid_to_curves = dict(zip(all_aids, all_curves))
-        for qaid, daid in zip(qaid_list, daid_list):
-            query_curv = aid_to_curves[qaid]
-            db_curv = aid_to_curves[daid]
+    all_aids = np.unique(ut.flatten([qaid_list, daid_list]))
+    all_curves = depc.get('Block_Curvature', all_aids, 'curvature', config=config)
+    aid_to_curves = dict(zip(all_aids, all_curves))
+    for qaid, daid in zip(qaid_list, daid_list):
+        query_curv = aid_to_curves[qaid]
+        db_curv = aid_to_curves[daid]
+        if query_curv is None or db_curv is None:
+            yield None
+        else:
             distance = get_distance_curvweighted(query_curv, db_curv, curv_weights,
                                                  window=config['window'])
             score = np.exp(-distance / 50)
