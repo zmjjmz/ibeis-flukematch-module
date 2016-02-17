@@ -17,7 +17,7 @@ from itertools import chain
 
 
 def setup_kp_network():
-    network_params_path = ut.grab_file_url('http://lev.cs.rpi.edu/public/models/kpextractor_weights.pickle', appname='ibs')
+    network_params_path = ut.grab_file_url('http://lev.cs.rpi.edu/public/models/kpextractor_weights.pickle', appname='ibeis')
     network_params = ut.load_cPkl(network_params_path)
     # network_params also includes normalization constants needed for the dataset, and is assumed to be a dictionary
     # with keys mean, std, and params
@@ -76,7 +76,7 @@ def infer_kp(img_paths, networkfn, mean, std, batch_size=32, input_size=(128, 12
 
 
 def setup_te_network():
-    network_params_path = ut.grab_file_url('http://lev.cs.rpi.edu/public/models/tescorer_weights.pickle', appname='ibs')
+    network_params_path = ut.grab_file_url('http://lev.cs.rpi.edu/public/models/tescorer_weights.pickle', appname='ibeis')
     network_params = ut.load_cPkl(network_params_path)
     # network_params also includes normalization constants needed for the dataset, and is assumed to be a dictionary
     # with keys mean, std, and params

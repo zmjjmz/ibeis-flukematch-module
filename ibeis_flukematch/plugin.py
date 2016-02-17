@@ -1,25 +1,32 @@
 # -*- coding: utf-8 -*-
 r"""
 CommandLine:
-    # Small baseline test of algorithm in matplotlib
+    # The following command lines test a 50 annotation sample of the dataset
+    # under various configurations.
+
+    # baseline test of algorithm in matplotlib
     python -m ibeis -e rank_cdf --db humpbacks \
-        -a default:has_any=hasnotch,mingt=2,size=50
+        -a default:has_any=hasnotch,mingt=2,size=50 \
         -t default:proot=BC_DTW --show
 
-    # Small baseline test of algorithm in ipynb
+    # baseline test of algorithm in ipynb
     python -m ibeis --tf autogen_ipynb --ipynb --db humpbacks \
         -a default:has_any=hasnotch,mingt=2,size=50 \
         -t default:proot=BC_DTW
 
     # Compare manual vs cnn notch points
     python -m ibeis --tf autogen_ipynb --db humpbacks --ipynb \
-        -a default:has_any=hasnotch \
+        -a default:has_any=hasnotch,mingt=2,size=50 \
         -t default:proot=BC_DTW,manual_extract=[True,False]
 
     # Compare BC_DTW vs Hotspotter
     python -m ibeis --tf autogen_ipynb --db humpbacks --ipynb --noexample \
-        -a default:has_any=hasnotch,mingt=2,qindex=0:50,dindex=0:50 \
-        -t default:proot=BC_DTW default:proot=vsmany \
+        -a default:has_any=hasnotch,mingt=2,size=50 \
+        -t default:proot=BC_DTW default:proot=vsmany
+
+
+    TESTING:
+        ibeis -e rank_cdf --db humpbacks_fb -a default:mingt=2,qsize=10,dsize=100 default:qmingt=2,qsize=10,dsize=100 -t default:proot=BC_DTW,decision=max,crop_dim_size=500,crop_enabled=True,manual_extract=False,use_te_scorer=True,ignore_notch=True,te_score_weight=0.5 --show
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
 import ibeis
@@ -544,6 +551,7 @@ def preproc_trailing_edge(depc, cpid_list, config=None):
                 n_neighbors=n_neighbors, ignore_notch=config['ignore_notch'],
                 score_mat=score_pred, score_weight=config['te_score_weight'])
         except IndexError as ie:
+            print(ie)
             print("Bad points for %s: %r" % (img_path, point_set))
             yield None
         yield (tedge, cost, score_pred)
