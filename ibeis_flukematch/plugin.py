@@ -315,10 +315,10 @@ def preproc_notch_tips(depc, cid_list, config=None):
 class CropChipConfig(dtool.Config):
     def get_param_info_list(self):
         return [
-            ut.ParamInfo('crop_dim_size', 960, 'sz', hideif=lambda cfg: cfg['crop_enabled'] is False or cfg['crop_dim_size'] is None),
+            ut.ParamInfo('crop_dim_size', 960, 'sz'),
             ut.ParamInfo('crop_enabled', False, hideif=False),
             #ut.ParamInfo('ccversion', 1)
-            ut.ParamInfo('version', 1),
+            ut.ParamInfo('version', 2),
         ]
 
 
@@ -739,7 +739,7 @@ class BC_DTW_Config(dtool.Config):
             ut.ParamInfo('weights', None),
             ut.ParamInfo('window', 50),
             #ut.ParamInfo('bcdtwversion', 1),
-            ut.ParamInfo('version', 2),
+            ut.ParamInfo('version', 4),
         ]
 
 
@@ -832,6 +832,7 @@ def id_algo_bc_dtw(depc, qaid_list, daid_list, config):
         query_curv = aid_to_curves[qaid]
         db_curv = aid_to_curves[daid]
         if query_curv is None or db_curv is None:
+            print("Comparison of qaid: %d and daid: %d -- one of the curvatures is None, skipping" % (qaid, daid))
             yield None
         else:
             distance = get_distance_curvweighted(query_curv, db_curv, curv_weights,

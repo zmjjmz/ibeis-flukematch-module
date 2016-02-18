@@ -14,6 +14,7 @@ import theano.tensor as T
 from theano import function as tfn
 import lasagne.layers as ll
 from itertools import chain
+import math
 
 
 def setup_kp_network():
@@ -42,7 +43,6 @@ def infer_kp(img_paths, networkfn, mean, std, batch_size=32, input_size=(128, 12
     >>> pt.imshow(overlay_fluke_feats((img[0] * std + mean), tips=batch_outputs[0] * 128))
     """
     # load up the images in batches
-    import math
     nbatches = int(math.ceil(len(img_paths) / batch_size))
     predictions = []
     for batch_ind in range(nbatches):
@@ -89,7 +89,7 @@ def setup_te_network():
 
 def score_te(img_paths, networkfn, mean, std, batch_size=32, input_size=None):
     # load up the images in batches
-    nbatches = (len(img_paths) // batch_size) + 1
+    nbatches = int(math.ceil(len(img_paths) / batch_size))
     predictions = []
     for batch_ind in range(nbatches):
         batch_slice = slice(batch_ind * batch_size, (batch_ind + 1) * batch_size)
