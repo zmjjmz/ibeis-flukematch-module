@@ -443,6 +443,7 @@ class TrailingEdgeConfig(dtool.Config):
             ut.ParamInfo('version', 5),
             ut.ParamInfo('use_te_scorer', False, 'te_s', hideif=False),
             ut.ParamInfo('te_score_weight', 0.5, 'w_tes'),
+            ut.ParamInfo('te_net', 'fbannot_upsample'),
         ]
 
 
@@ -511,11 +512,8 @@ def preproc_trailing_edge(depc, cpid_list, config=None):
     #aid_list = depc.get_root_rowids('Notch_Tips', ntid_list)
     #image_paths = ibs.get_annot_image_paths(aid_list)
     if config['use_te_scorer']:
-        network_data = setup_te_network()
-        networkfn = network_data['networkfn']
-        mean = network_data['mean']
-        std = network_data['std']
-        score_preds = score_te(img_paths, networkfn, mean, std)
+        network_data = setup_te_network(config['te_net'])
+        score_preds = score_te(img_paths, **network_data)
     else:
         score_preds = [None for _ in img_paths]
 

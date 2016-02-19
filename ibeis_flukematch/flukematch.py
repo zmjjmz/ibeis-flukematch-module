@@ -8,6 +8,7 @@ from ibeis_flukematch.networks import (
         build_kpextractor128_decoupled,
         build_segmenter_simple,
         build_segmenter_upsample,
+        build_segmenter_jet,
         )
 import utool as ut
 import theano.tensor as T
@@ -76,18 +77,45 @@ def infer_kp(img_paths, networkfn, mean, std, batch_size=32, input_size=(128, 12
     return predictions
 
 
-def setup_te_network():
-    network_params_path = ut.grab_file_url('http://lev.cs.rpi.edu/public/models/tescorer_weights.pickle', appname='ibeis')
+TE_NETWORK_OPTIONS = {
+#'annot_small':{'url':'tescorer_annot_small.pickle', 'exp':build_segmenter_simple},
+#'fbannot_small':{'url':'tescorer_fbannot_small.pickle', 'exp':build_segmenter_simple},
+#'annot_upsample':{'url':'tescorer_annot_upsample.pickle', 'exp':build_segmenter_upsample},
+#'fbannot_upsample':{'url':'tescorer_fbannot_upsample.pickle', 'exp':build_segmenter_upsample},
+#'annot_jet':{'url':'tescorer_annot_jet.pickle', 'exp':build_segmenter_jet},
+'fbannot_jet':{'url':'tescorer_fbannot_jet.pickle', 'exp':build_segmenter_jet},
+}
+
+def make_acceptable_shape(acceptable_mult, shape):
+    new_shape = []
+    for shp in shape:
+        if shp % acceptable_mult != 0:
+            rem = shp % acceptable_mult
+            new_shp = shp - rem
+            assert(new_shp != 0 and new_shp % acceptable_mult == 0)
+            new_shape.append(new_shp)
+        else:
+            new_shape.append(shp)
+    return tuple(new_shape)
+
+def setup_te_network(network_str):
+    fn = TE_NETWORK_OPTIONS[network_str]['url']
+    file_url = join('http://lev.cs.rpi.edu/public/models/',fn)
+    network_params_path = ut.grab_file_url(file_url, appname='ibeis')
     network_params = ut.load_cPkl(network_params_path)
     # network_params also includes normalization constants needed for the dataset, and is assumed to be a dictionary
     # with keys mean, std, and params
-    network_exp = build_segmenter_upsample()
+    network_exp = TE_NETWORK_OPTIONS[network_str]['exp']()
     ll.set_all_param_values(network_exp, network_params['params'])
     X = T.tensor4()
-    network_fn = tfn([X], ll.get_output(network_exp, X, deterministic=True))
-    return {'mean': network_params['mean'], 'std': network_params['std'], 'networkfn': network_fn}
+    network_fn = tfn([X], ll.get_output(network_exp[-1], X, deterministic=True))
+    retdict = {'mean': network_params['mean'], 'std': network_params['std'], 'networkfn': network_fn}
+    if any([i in network_str for i in ('upsample', 'jet')]):
+        retdict['mod_acc'] = 8
+    return retdict
 
-def score_te(img_paths, networkfn, mean, std, batch_size=32, input_size=None):
+
+def score_te(img_paths, networkfn, mean, std, mod_acc=None, batch_size=32, input_size=None):
     # load up the images in batches
     nbatches = int(math.ceil(len(img_paths) / batch_size))
     predictions = []
@@ -100,6 +128,10 @@ def score_te(img_paths, networkfn, mean, std, batch_size=32, input_size=None):
             img = cv2.cvtColor(cv2.imread(img_path), cv2.COLOR_BGR2GRAY)
             original_size = img.shape[::-1]
             batch_sizes.append(original_size)
+            if mod_acc is not None:
+                new_shape = make_acceptable_shape(mod_acc, img.shape)
+                img = cv2.resize(img, new_shape[::-1], cv2.INTER_LANCZOS4)
+
             if input_size is not None:
                 # note that input_size should be w, h
                 img = cv2.resize(img, input_size, cv2.INTER_LANCZOS4)
@@ -121,9 +153,9 @@ def score_te(img_paths, networkfn, mean, std, batch_size=32, input_size=None):
             batch_outputs = [networkfn(img)[0][bg_ind] for img in nd_imgs]
         # resize it to the original img shape if necessary
         batch_outputs_r = []
-        for label, img in zip(batch_outputs, batch_imgs):
+        for label, size in zip(batch_outputs, batch_sizes):
             if label.shape[:2] != img.shape[1:]:
-                batch_outputs_r.append(cv2.resize(label, img.shape[1:][::-1], cv2.INTER_LANCZOS4))
+                batch_outputs_r.append(cv2.resize(label, size, cv2.INTER_LANCZOS4))
             else:
                 batch_outputs_r.append(label)
 
