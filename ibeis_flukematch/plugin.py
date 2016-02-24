@@ -107,8 +107,8 @@ def debug_depcache(ibs):
     #import utool
     #utool.embed()
     # from dtool import depends_cache
-    # print(ut.repr3(depends_cache.__PREPROC_REGISTER__))
-    # print(ut.repr3(depends_cache.__ALGO_REGISTER__))
+    # print(ut.repr3(depends_cache.PREPROC_REGISTER))
+    # print(ut.repr3(depends_cache.ALGO_REGISTER))
 
 
 @register_preproc('Has_Notch', [ROOT], ['flag'], [bool])
