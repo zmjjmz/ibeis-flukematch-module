@@ -9,6 +9,7 @@ from ibeis_flukematch.networks import (
         build_segmenter_simple,
         build_segmenter_upsample,
         build_segmenter_jet,
+        build_segmenter_jet_2,
         )
 import utool as ut
 import theano.tensor as T
@@ -78,12 +79,14 @@ def infer_kp(img_paths, networkfn, mean, std, batch_size=32, input_size=(128, 12
 
 
 TE_NETWORK_OPTIONS = {
-#'annot_small':{'url':'tescorer_annot_small.pickle', 'exp':build_segmenter_simple},
-#'fbannot_small':{'url':'tescorer_fbannot_small.pickle', 'exp':build_segmenter_simple},
+'annot_simple':{'url':'tescorer_annot_simple.pickle', 'exp':build_segmenter_simple},
+'fbannot_simple':{'url':'tescorer_fbannot_simple.pickle', 'exp':build_segmenter_simple},
 #'annot_upsample':{'url':'tescorer_annot_upsample.pickle', 'exp':build_segmenter_upsample},
 #'fbannot_upsample':{'url':'tescorer_fbannot_upsample.pickle', 'exp':build_segmenter_upsample},
-#'annot_jet':{'url':'tescorer_annot_jet.pickle', 'exp':build_segmenter_jet},
+'annot_jet':{'url':'tescorer_annot_jet.pickle', 'exp':build_segmenter_jet},
 'fbannot_jet':{'url':'tescorer_fbannot_jet.pickle', 'exp':build_segmenter_jet},
+'annot_jet2':{'url':'tescorer_annot_jet2.pickle', 'exp':build_segmenter_jet_2},
+'fbannot_jet2':{'url':'tescorer_fbannot_jet2.pickle', 'exp':build_segmenter_jet_2},
 }
 
 def make_acceptable_shape(acceptable_mult, shape):
