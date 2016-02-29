@@ -443,7 +443,8 @@ class TrailingEdgeConfig(dtool.Config):
             ut.ParamInfo('version', 5),
             ut.ParamInfo('use_te_scorer', False, 'te_s', hideif=False),
             ut.ParamInfo('te_score_weight', 0.5, 'w_tes'),
-            ut.ParamInfo('te_net', 'fbannot_upsample'),
+            ut.ParamInfo('te_net', 'fbannot_simple'),
+            ut.ParamInfo('te_score_method', 'avg', 'te_sm'),
         ]
 
 
@@ -547,7 +548,8 @@ def preproc_trailing_edge(depc, cpid_list, config=None):
             tedge, cost = find_trailing_edge_cpp(
                 img_grey, left, right, notch,
                 n_neighbors=n_neighbors, ignore_notch=config['ignore_notch'],
-                score_mat=score_pred, score_weight=config['te_score_weight'])
+                score_mat=score_pred, score_weight=config['te_score_weight'],
+                score_method=config['te_score_method'])
         except IndexError as ie:
             print(ie)
             print("Bad points for %s: %r" % (img_path, point_set))

@@ -291,5 +291,75 @@ def build_segmenter_jet_2():
     # this is where up1 would go but that doesn't make any sense
     return [up8, up4, up2, softmax_1_merge]
 
+def build_segmenter_jet_preconv():
+    # downsample down to a small region, then upsample all the way back up, using jet architecture
+    # recreate basic FCN-8s structure (though more aptly 1s here since we upsample back to the original input size)
+    # this jet will have another conv layer in the final upsample
+    # difference here is that instead of combining softmax layers in the jet, we'll upsample before the conv_f* layer
+    # this will certainly make the model slower, but should give us better predictions...
+    # The awkward part here is combining the intermediate conv layers when they have different filter shapes
+    # We could:
+    #   concat them
+    #   have intermediate conv layers that bring them to the shape needed then merge them
+    # in the interests of speed we'll just concat them, though we'll have a ton of filters at the end
+    inp = ll.InputLayer(shape=(None, 1, None, None), name='input')
+    conv1 = ll.Conv2DLayer(inp, num_filters=32, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv1_1')
+    bn1 = ll.BatchNormLayer(conv1, name='bn1')
+    conv2 = ll.Conv2DLayer(conv1, num_filters=64, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv1_2')
+    bn2 = ll.BatchNormLayer(conv2, name='bn2')
+    mp1 = ll.MaxPool2DLayer(conv2, 2, stride=2, name='mp1') # 2x downsample
+    conv3 = ll.Conv2DLayer(mp1, num_filters=128, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv2_1')
+    bn3 = ll.BatchNormLayer(conv3, name='bn3')
+    conv4 = ll.Conv2DLayer(conv3, num_filters=128, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv2_2')
+    bn4 = ll.BatchNormLayer(conv4, name='bn4')
+    mp2 = ll.MaxPool2DLayer(conv4, 2, stride=2, name='mp2') # 4x downsample
+    conv5 = ll.Conv2DLayer(mp2, num_filters=128, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv3_1')
+    bn5 = ll.BatchNormLayer(conv5, name='bn5')
+    conv6 = ll.Conv2DLayer(conv5, num_filters=128, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv3_2')
+    bn6 = ll.BatchNormLayer(conv6, name='bn6')
+    mp3 = ll.MaxPool2DLayer(conv6, 2, stride=2, name='mp3') # 8x downsample
+    conv7 = ll.Conv2DLayer(mp3, num_filters=128, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv4_1')
+    bn7 = ll.BatchNormLayer(conv7, name='bn7')
+    conv8 = ll.Conv2DLayer(conv7, num_filters=128, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv4_2')
+    bn8 = ll.BatchNormLayer(conv8, name='bn8')
+    # f 68 s 8
+    # now start the upsample
+    ## FIRST UPSAMPLE PREDICTION (akin to FCN-32s)
+
+    up8 = ll.Upscale2DLayer(bn8, 8, name='upsample_8x') # take loss here, 8x upsample from 8x downsample
+    conv_f8 = ll.Conv2DLayer(up8, num_filters=2, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=linear,
+                             name='conv_8xpred')
+    softmax_8 = Softmax4D(conv_f8, name='4dsoftmax_8x')
+
+    ## COMBINE BY UPSAMPLING CONV 8 AND CONV 6
+    conv_8_up2 = ll.Upscale2DLayer(bn8, 2, name='upsample_c8_2') # 4x downsample
+    concat_c8_c6 = ll.ConcatLayer([conv_8_up2, bn6], axis=1, name='concat_c8_c6')
+    up4 = ll.Upscale2DLayer(concat_c8_c6, 4, name='upsample_4x') # take loss here, 4x upsample from 4x downsample
+    conv_f4 = ll.Conv2DLayer(up4, num_filters=2, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=linear,
+                             name='conv_4xpred')
+    softmax_4 = Softmax4D(conv_f4, name='4dsoftmax_4x') # 4x downsample
+
+    ## COMBINE BY UPSAMPLING CONCAT_86 AND CONV 4
+    concat_86_up2 = ll.Upscale2DLayer(concat_c8_c6, 2, name='upsample_concat_86_2') # 2x downsample
+    concat_ct86_c4 = ll.ConcatLayer([concat_86_up2, bn4], axis=1, name='concat_ct86_c4')
+
+    up2 = ll.Upscale2DLayer(concat_ct86_c4, 2, name='upsample_2x') # final loss here, 2x upsample from a 2x downsample
+    conv_f2 = ll.Conv2DLayer(up2, num_filters=2, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=linear,
+                             name='conv_2xpred')
+
+    softmax_2 = Softmax4D(conv_f2, name='4dsoftmax_2x')
+
+
+    ## COMBINE BY UPSAMPLING CONCAT_864 AND CONV 2
+    concat_864_up2 = ll.Upscale2DLayer(concat_ct86_c4, 2, name='upsample_concat_86_2') # no downsample
+    concat_864_c2 = ll.ConcatLayer([concat_864_up2, bn2], axis=1, name='concat_ct864_c2')
+    conv_f1 = ll.Conv2DLayer(concat_864_c2, num_filters=2, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=linear,
+                             name='conv_1xpred')
+
+    softmax_1 = Softmax4D(conv_f1, name='4dsoftmax_1x')
+
+    # this is where up1 would go but that doesn't make any sense
+    return [softmax_8, softmax_4, softmax_2, softmax_1]
+
 
 

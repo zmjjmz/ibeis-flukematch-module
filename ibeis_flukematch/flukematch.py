@@ -87,6 +87,7 @@ TE_NETWORK_OPTIONS = {
 'fbannot_jet':{'url':'tescorer_fbannot_jet.pickle', 'exp':build_segmenter_jet},
 'annot_jet2':{'url':'tescorer_annot_jet2.pickle', 'exp':build_segmenter_jet_2},
 'fbannot_jet2':{'url':'tescorer_fbannot_jet2.pickle', 'exp':build_segmenter_jet_2},
+#'fbannot_jet_preconv':{'url':'tescorer_fbannot_jet_preconv.pickle', 'exp':build_segmenter_jet_preconv},
 }
 
 def make_acceptable_shape(acceptable_mult, shape):
@@ -255,7 +256,8 @@ def normalize_01(img):
     return norm_img
 
 
-def find_trailing_edge_cpp(img, start, end, center, n_neighbors=5, ignore_notch=False, score_mat=None, score_weight=0.5):
+def find_trailing_edge_cpp(img, start, end, center, n_neighbors=5, ignore_notch=False, score_mat=None,
+                           score_method='avg', score_weight=0.5):
     # points are x,y
     if len(img.shape) == 3:
         img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -275,7 +277,28 @@ def find_trailing_edge_cpp(img, start, end, center, n_neighbors=5, ignore_notch=
             print(score_mat.shape)
             print(norm_grad.shape)
             raise
-        score_grad = score_weight*score_mat + (1-score_weight)*norm_grad
+        if score_method == 'avg':
+            score_grad = score_weight*score_mat + (1-score_weight)*norm_grad
+        elif score_method == 'allow':
+            # basically make everything that isn't classified as being part of the trailing edge (using score_weight as the thresh)
+            # into np.inf
+            # YUUUGGE EROSION (i.e. dilation but inverted)
+            erosion_k = np.ones((20,img.shape[1]),dtype=np.float32)
+            score_mat = cv2.erode(score_mat, erosion_k)
+
+            norm_grad[np.where(score_mat > 0.5)] = np.inf # since we're given the bg classification
+            score_grad = norm_grad
+            # this is dangerous, since if we miss any of the vital points (i.e. start / end) or disconnect them from the rest
+            # of the trailing edge, we'll end up w/disastrous results. If we keep the threshold low we should (big should)
+            # be able to avoid this
+        elif score_method == 'avg_thresh':
+            # instead of giving a direct average, we'll basically snap a (inverted) pixel in score_mat to 0 if it's above the threshold
+            # and snap it to 1 if it's below the threshold, and then average. This should emphasize those classifications that are
+            # part of the predicted trailing edge without producing artifacts from unconfident predictions
+            thresholded_mat = np.copy(score_mat)
+            thresholded_mat[np.where(score_mat < 0.5)] = 0
+            thresholded_mat[np.where(score_mat > 0.5)] = 1
+            score_grad = score_weight*score_mat + (1-score_weight)*norm_grad
         #score_grad = np.average(np.stack([norm_grad, score_mat],axis=0),axis=0)
     else:
         score_grad = norm_grad
