@@ -118,6 +118,12 @@ def setup_te_network(network_str):
         retdict['mod_acc'] = 8
     return retdict
 
+def safe_load(networkfn, img):
+    try:
+        return networkfn(img)
+    except MemoryError:
+        print("[score_te] ERROR: GPU ran out of memory trying to process an image of size %r" % (img.shape,))
+        return None
 
 def score_te(img_paths, networkfn, mean, std, mod_acc=None, batch_size=32, input_size=None):
     # load up the images in batches
@@ -145,23 +151,28 @@ def score_te(img_paths, networkfn, mean, std, mod_acc=None, batch_size=32, input
             batch_imgs.append(img)
         # we only want the background probabilities
         bg_ind = 1
-
         if input_size is not None:
             nd_imgs = np.stack(batch_imgs, axis=0)
-            batch_outputs = networkfn(nd_imgs)
+            batch_outputs = safe_load(networkfn, nd_imgs)
             # denumpy it
-            batch_outputs = [i[bg_ind] for i in batch_outputs]
+            if batch_outputs is not None:
+                batch_outputs = [i[bg_ind] for i in batch_outputs]
         else:
             nd_imgs = [np.expand_dims(img, axis=0) for img in batch_imgs]
             # denumpy it
-            batch_outputs = [networkfn(img)[0][bg_ind] for img in nd_imgs]
+        batch_outputs = [safe_load(networkfn, img) for img in nd_imgs]
         # resize it to the original img shape if necessary
         batch_outputs_r = []
         for label, size in zip(batch_outputs, batch_sizes):
-            if label.shape[:2] != img.shape[1:]:
-                batch_outputs_r.append(cv2.resize(label, size, cv2.INTER_LANCZOS4))
-            else:
+            if label is None:
                 batch_outputs_r.append(label)
+                continue
+            # img.shape is (1, h, w)
+            # label.shape is (1, 2, h, w)
+            if label.shape[2:] != img.shape[1:]:
+                batch_outputs_r.append(cv2.resize(label[0][bg_ind], size, cv2.INTER_LANCZOS4))
+            else:
+                batch_outputs_r.append(label[0][bg_ind])
 
         predictions = chain(predictions, batch_outputs_r)
     predictions = list(predictions)
