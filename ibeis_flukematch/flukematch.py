@@ -10,6 +10,7 @@ from ibeis_flukematch.networks import (
         build_segmenter_upsample,
         build_segmenter_jet,
         build_segmenter_jet_2,
+        build_segmenter_simple_absurd_res,
         )
 import utool as ut
 import theano.tensor as T
@@ -88,6 +89,7 @@ TE_NETWORK_OPTIONS = {
 'annot_jet2':{'url':'tescorer_annot_jet2.pickle', 'exp':build_segmenter_jet_2},
 'fbannot_jet2':{'url':'tescorer_fbannot_jet2.pickle', 'exp':build_segmenter_jet_2},
 #'fbannot_jet_preconv':{'url':'tescorer_fbannot_jet_preconv.pickle', 'exp':build_segmenter_jet_preconv},
+'annot_res':{'url':'tescorer_annot_res.pickle', 'exp':build_segmenter_simple_absurd_res},
 }
 
 def make_acceptable_shape(acceptable_mult, shape):
@@ -125,7 +127,7 @@ def safe_load(networkfn, img):
         print("[score_te] ERROR: GPU ran out of memory trying to process an image of size %r" % (img.shape,))
         return None
 
-def score_te(img_paths, networkfn, mean, std, mod_acc=None, batch_size=32, input_size=None):
+def score_te(img_paths, networkfn, mean, std, mod_acc=None, batch_size=32, input_size=None, eqH=False):
     # load up the images in batches
     nbatches = int(math.ceil(len(img_paths) / batch_size))
     predictions = []
@@ -136,6 +138,8 @@ def score_te(img_paths, networkfn, mean, std, mod_acc=None, batch_size=32, input
         batch_sizes = []
         for img_path in img_paths[batch_slice]:
             img = cv2.cvtColor(cv2.imread(img_path), cv2.COLOR_BGR2GRAY)
+            if eqH:
+                img = cv2.equalizeHist(img)
             original_size = img.shape[::-1]
             batch_sizes.append(original_size)
             if mod_acc is not None:
@@ -349,6 +353,8 @@ def block_integral_curvatures_cpp(sizes, coords):
     """
     # assume coords are in x, y
     coords = np.array(coords, dtype=np.int32)
+    sizes = map(lambda x: int(coords.shape[1]*x), sizes)
+
     fit_size = (np.max(coords, axis=0) -
                 np.min(coords, axis=0)) + (max(sizes) + 1)
     binarized = np.zeros(fit_size[::-1], dtype=np.float32)

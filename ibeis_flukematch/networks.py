@@ -6,6 +6,7 @@ from lasagne.init import Orthogonal, Constant
 from lasagne.regularization import l2, regularize_network_params
 import theano.tensor as T
 import theano
+import sys
 
 
 
@@ -361,5 +362,28 @@ def build_segmenter_jet_preconv():
     # this is where up1 would go but that doesn't make any sense
     return [softmax_8, softmax_4, softmax_2, softmax_1]
 
+
+
+def build_segmenter_simple_absurd_res():
+    sys.setrecursionlimit(1500)
+    inp = ll.InputLayer(shape=(None, 1, None, None), name='input')
+    n_layers = 64 # should get a 128 x 128 receptive field
+    layers = [inp]
+    for i in range(n_layers):
+        # every 2 layers, add a skip connection
+        layers.append(ll.Conv2DLayer(layers[-1], num_filters=8, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=linear, name='conv%d' % (i+1)))
+        layers.append(ll.BatchNormLayer(layers[-1], name='bn%i' % (i+1)))
+        if (i % 2 == 0) and (i != 0):
+            layers.append(ll.ElemwiseSumLayer([layers[-1], # prev layer
+                                              layers[-6],] # 3 actual layers per block, skip the previous block
+                                              ))
+        layers.append(ll.NonlinearityLayer(layers[-1], nonlinearity=rectify))
+
+    # our output layer is also convolutional, remember that our Y is going to be the same exact size as the
+    conv_final = ll.Conv2DLayer(layers[-1], num_filters=2, filter_size=(3,3), pad='same', W=Orthogonal(), name='conv_final', nonlinearity=linear)
+    # we need to reshape it to be a (batch*n*m x 3), i.e. unroll s.t. the feature dimension is preserved
+    softmax = Softmax4D(conv_final, name='4dsoftmax')
+
+    return [softmax]
 
 

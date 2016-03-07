@@ -445,6 +445,7 @@ class TrailingEdgeConfig(dtool.Config):
             ut.ParamInfo('te_score_weight', 0.5, 'w_tes'),
             ut.ParamInfo('te_net', 'fbannot_simple'),
             ut.ParamInfo('te_score_method', 'avg', 'te_sm'),
+            ut.ParamInfo('equalize_hist',False,'eqH'),
         ]
 
 
@@ -514,7 +515,7 @@ def preproc_trailing_edge(depc, cpid_list, config=None):
     #image_paths = ibs.get_annot_image_paths(aid_list)
     if config['use_te_scorer']:
         network_data = setup_te_network(config['te_net'])
-        score_preds = score_te(img_paths, **network_data)
+        score_preds = score_te(img_paths, eqH=config['equalize_hist'], **network_data)
     else:
         score_preds = [None for _ in img_paths]
 
@@ -538,7 +539,8 @@ def preproc_trailing_edge(depc, cpid_list, config=None):
     for img_path, point_set, score_pred in progiter:
         img = cv2.imread(img_path)
         img_grey = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
+        if config['equalize_hist']:
+            img_grey = cv2.equalizeHist(img_grey)
         left, right, notch = point_set[1], point_set[2], point_set[0]
         left = fix_point(left.round().astype(np.int))
         right = fix_point(right.round().astype(np.int))
@@ -595,7 +597,7 @@ def preproc_trailing_edge(depc, cpid_list, config=None):
 class BlockCurvConfig(dtool.Config):
     def get_param_info_list(self):
         return [
-            ut.ParamInfo('sizes', (5, 10, 15, 20)),
+            ut.ParamInfo('sizes', (1, 2, 3, 4)), # these are percentage (as ints) of trailing edge width
         ]
 
 
@@ -642,12 +644,7 @@ def preproc_block_curvature(depc, te_rowids, config={'sizes': [5, 10, 15, 20]}):
     # NOTE: Can specify a single column, so unpacking is done automatically
     tedges = ibs.depc.get_native_property('Trailing_Edge', te_rowids, 'edge')
     # FIXME: CONFIG
-    try:
-        sizes = config['sizes']
-    except KeyError:
-        sizes = [5, 10, 15, 20]
-        print(('[fluke-module] WARNING: Sizes for block curvature extraction'
-               'not provided, defaulting to %r ') % (sizes,))
+    sizes = map(lambda x: float(x) / 100, config['sizes'])
 
     # call flukematch.block_integral_curvatures_cpp
     progiter = ut.ProgIter(tedges, lbl='compute Block_Curvature')
