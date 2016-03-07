@@ -35,6 +35,7 @@ import dtool  # NOQA
 import numpy as np
 import vtool as vt
 import cv2
+import math
 from os.path import join, exists
 from six.moves import cPickle as pickle  # NOQA
 from ibeis import constants as const
@@ -597,13 +598,14 @@ def preproc_trailing_edge(depc, cpid_list, config=None):
 class BlockCurvConfig(dtool.Config):
     def get_param_info_list(self):
         return [
-            ut.ParamInfo('sizes', (1, 2, 3, 4)), # these are percentage (as ints) of trailing edge width
+            ut.ParamInfo('sizes', [1, 2, 3, 4]), # these are percentage (as ints) of trailing edge width
+            ut.ParamInfo('version', 2),
         ]
 
 
 @register_preproc('Block_Curvature', ['Trailing_Edge'], ['curvature'], [np.ndarray],
                   configclass=BlockCurvConfig, chunksize=256)
-def preproc_block_curvature(depc, te_rowids, config={'sizes': [5, 10, 15, 20]}):
+def preproc_block_curvature(depc, te_rowids, config={'sizes': [1, 2, 3, 4]}):
     r"""
     Args:
         depc (DependencyCache):
@@ -734,9 +736,9 @@ class BC_DTW_Config(dtool.Config):
             ut.ParamInfo('decision', 'average'),
             #ut.ParamInfo('sizes', (5, 10, 15, 20)),
             ut.ParamInfo('weights', None),
-            ut.ParamInfo('window', 50),
+            ut.ParamInfo('window', 10),
             #ut.ParamInfo('bcdtwversion', 1),
-            ut.ParamInfo('version', 4),
+            ut.ParamInfo('version', 5),
         ]
 
 
@@ -832,8 +834,10 @@ def id_algo_bc_dtw(depc, qaid_list, daid_list, config):
             print("Comparison of qaid: %d and daid: %d -- one of the curvatures is None, skipping" % (qaid, daid))
             yield None
         else:
+            # determine window as a percentage of the query trailing edge
+            window_size = int(math.ceil((config['window'] / 100) * query_curv.shape[0]))
             distance = get_distance_curvweighted(query_curv, db_curv, curv_weights,
-                                                 window=config['window'])
+                                                 window=window_size)
             score = np.exp(-distance / 50)
             yield (score,)
 

@@ -353,7 +353,7 @@ def block_integral_curvatures_cpp(sizes, coords):
     """
     # assume coords are in x, y
     coords = np.array(coords, dtype=np.int32)
-    sizes = map(lambda x: int(coords.shape[1]*x), sizes)
+    sizes = map(lambda x: int(math.ceil(coords.shape[0]*x)), sizes)
 
     fit_size = (np.max(coords, axis=0) -
                 np.min(coords, axis=0)) + (max(sizes) + 1)
