@@ -86,6 +86,49 @@ def build_kpextractor128():
 
     return out_rs
 
+def build_kpextractor64_decoupled():
+    inp = ll.InputLayer(shape=(None, 1, 64, 64), name='input')
+    # alternate pooling and conv layers to minimize parameters
+    filter_pad = lambda x, y: (x//2, y//2)
+    filter3 = (3, 3)
+    same_pad3 = filter_pad(*filter3)
+    conv1 = ll.Conv2DLayer(inp, num_filters=16, filter_size=filter3, pad=same_pad3, W=Orthogonal(), nonlinearity=rectify, name='conv1')
+    mp1 = ll.MaxPool2DLayer(conv1, 2, stride=2) # now down to 32 x 32
+    bn1 = ll.BatchNormLayer(mp1)
+    conv2 = ll.Conv2DLayer(bn1, num_filters=32, filter_size=filter3, pad=same_pad3, W=Orthogonal(), nonlinearity=rectify, name='conv2')
+    mp2 = ll.MaxPool2DLayer(conv2, 2, stride=2) # now down to 16 x 16
+    bn2 = ll.BatchNormLayer(mp2)
+    conv3 = ll.Conv2DLayer(bn2, num_filters=64, filter_size=filter3, pad=same_pad3, W=Orthogonal(), nonlinearity=rectify, name='conv3')
+    mp3 = ll.MaxPool2DLayer(conv3, 2, stride=2) # now down to 8 x 8
+    bn3 = ll.BatchNormLayer(mp3)
+    conv4 = ll.Conv2DLayer(bn3, num_filters=128, filter_size=filter3, pad=same_pad3, W=Orthogonal(), nonlinearity=rectify, name='conv4')
+    mp4 = ll.MaxPool2DLayer(conv4, 2, stride=2) # now down to 4 x 4
+    bn4 = ll.BatchNormLayer(mp4)
+    conv5 = ll.Conv2DLayer(bn4, num_filters=256, filter_size=filter3, pad=same_pad3, W=Orthogonal(), nonlinearity=rectify, name='conv5')
+    mp5 = ll.MaxPool2DLayer(conv5, 2, stride=2) # down to 2 x 2
+    bn5 = ll.BatchNormLayer(mp5)
+
+    dp0 = ll.DropoutLayer(bn5, p=0.5)
+
+    # now let's bring it down to a FC layer that takes in the 2x2x64 mp4 output
+    fc1 = ll.DenseLayer(dp0, num_units=256, nonlinearity=rectify)
+    bn1_fc = ll.BatchNormLayer(fc1)
+    dp1 = ll.DropoutLayer(bn1_fc, p=0.5)
+    # so what we're going to do here instead is break this into three separate layers (each 32 units)
+    # then each of these layers goes into a separate out, and out_rs will be a merge and then reshape
+    fc2_left = ll.DenseLayer(dp1, num_units=32, nonlinearity=rectify)
+    fc2_right = ll.DenseLayer(dp1, num_units=32, nonlinearity=rectify)
+    fc2_notch = ll.DenseLayer(dp1, num_units=32, nonlinearity=rectify)
+
+    out_left = ll.DenseLayer(fc2_left, num_units=2, nonlinearity=linear)
+    out_right = ll.DenseLayer(fc2_right, num_units=2, nonlinearity=linear)
+    out_notch = ll.DenseLayer(fc2_notch, num_units=2, nonlinearity=linear)
+
+    out = ll.ConcatLayer([out_left, out_right, out_notch], axis=1)
+    out_rs = ll.ReshapeLayer(out, ([0], 3, 2))
+
+    return out_rs
+
 
 def build_kpextractor128_decoupled():
     inp = ll.InputLayer(shape=(None, 1, 128, 128), name='input')
@@ -133,6 +176,65 @@ def build_kpextractor128_decoupled():
 
     return out_rs
 
+def build_kpextractor256_decoupled():
+    inp = ll.InputLayer(shape=(None, 1, 256, 256), name='input')
+    # alternate pooling and conv layers to minimize parameters
+    filter_pad = lambda x, y: (x//2, y//2)
+    filter3 = (3, 3)
+    same_pad3 = filter_pad(*filter3)
+    conv1 = ll.Conv2DLayer(inp, num_filters=8, filter_size=filter3, pad=same_pad3, W=Orthogonal(),
+                            nonlinearity=rectify, name='conv1')
+    mp1 = ll.MaxPool2DLayer(conv1, 2, stride=2) # now down to 128 x 128
+    bn1 = ll.BatchNormLayer(mp1)
+    conv2 = ll.Conv2DLayer(bn1, num_filters=16, filter_size=filter3, pad=same_pad3, W=Orthogonal(),
+                            nonlinearity=rectify, name='conv2')
+    mp2 = ll.MaxPool2DLayer(conv2, 2, stride=2) # now down to 128 x 128
+    bn2 = ll.BatchNormLayer(mp2)
+
+    conv3 = ll.Conv2DLayer(bn2, num_filters=32, filter_size=filter3, pad=same_pad3, W=Orthogonal(),
+                            nonlinearity=rectify, name='conv3')
+    mp3 = ll.MaxPool2DLayer(conv3, 2, stride=2) # now down to 32 x 32
+    bn3 = ll.BatchNormLayer(mp3)
+    conv4 = ll.Conv2DLayer(bn3, num_filters=64, filter_size=filter3, pad=same_pad3, W=Orthogonal(),
+                            nonlinearity=rectify, name='conv4')
+    mp4 = ll.MaxPool2DLayer(conv4, 2, stride=2) # now down to 16 x 16
+    bn4 = ll.BatchNormLayer(mp4)
+    conv5 = ll.Conv2DLayer(bn4, num_filters=128, filter_size=filter3, pad=same_pad3, W=Orthogonal(),
+                            nonlinearity=rectify, name='conv5')
+    mp5 = ll.MaxPool2DLayer(conv5, 2, stride=2) # now down to 8 x 8
+    bn5 = ll.BatchNormLayer(mp5)
+    conv6 = ll.Conv2DLayer(bn5, num_filters=256, filter_size=filter3, pad=same_pad3, W=Orthogonal(),
+                            nonlinearity=rectify, name='conv6')
+    mp6 = ll.MaxPool2DLayer(conv6, 2, stride=2) # down to 4 x 4
+    bn6 = ll.BatchNormLayer(mp6)
+
+    conv7 = ll.Conv2DLayer(bn6, num_filters=512, filter_size=filter3, pad=same_pad3, W=Orthogonal(),
+                            nonlinearity=rectify, name='conv7')
+    mp7 = ll.MaxPool2DLayer(conv7, 2, stride=2) # down to 4 x 4
+    bn7 = ll.BatchNormLayer(mp7)
+    dp0 = ll.DropoutLayer(bn7, p=0.5)
+
+    # now let's bring it down to a FC layer that takes in the 2x2x64 mp4 output
+    fc1 = ll.DenseLayer(dp0, num_units=256, nonlinearity=rectify)
+    bn1_fc = ll.BatchNormLayer(fc1)
+    dp1 = ll.DropoutLayer(bn1_fc, p=0.5)
+    # so what we're going to do here instead is break this into three separate layers (each 32 units)
+    # then each of these layers goes into a separate out, and out_rs will be a merge and then reshape
+    fc2_left = ll.DenseLayer(dp1, num_units=32, nonlinearity=rectify)
+    fc2_right = ll.DenseLayer(dp1, num_units=32, nonlinearity=rectify)
+    fc2_notch = ll.DenseLayer(dp1, num_units=32, nonlinearity=rectify)
+
+    out_left = ll.DenseLayer(fc2_left, num_units=2, nonlinearity=linear)
+    out_right = ll.DenseLayer(fc2_right, num_units=2, nonlinearity=linear)
+    out_notch = ll.DenseLayer(fc2_notch, num_units=2, nonlinearity=linear)
+
+    out = ll.ConcatLayer([out_left, out_right, out_notch], axis=1)
+    out_rs = ll.ReshapeLayer(out, ([0], 3, 2))
+
+    return out_rs
+
+
+
 #----------- TRAILING EDGE SCORER
 
 class Softmax4D(ll.Layer):
@@ -176,23 +278,30 @@ def build_segmenter_upsample():
     # there will always be an error signal unless the loss fn is run on downsampled targets...
     inp = ll.InputLayer(shape=(None, 1, None, None), name='input')
     conv1 = ll.Conv2DLayer(inp, num_filters=32, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv1_1')
-    conv2 = ll.Conv2DLayer(conv1, num_filters=64, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv1_2')
-    mp1 = ll.MaxPool2DLayer(conv2, 2, stride=2, name='mp1') # 2x downsample
+    bn1 = ll.BatchNormLayer(conv1, name='bn1')
+    conv2 = ll.Conv2DLayer(bn1, num_filters=64, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv1_2')
+    bn2 = ll.BatchNormLayer(conv2, name='bn2')
+    mp1 = ll.MaxPool2DLayer(bn2, 2, stride=2, name='mp1') # 2x downsample
     conv3 = ll.Conv2DLayer(mp1, num_filters=128, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv2_1')
-    conv4 = ll.Conv2DLayer(conv3, num_filters=128, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv2_2')
-    mp2 = ll.MaxPool2DLayer(conv4, 2, stride=2, name='mp2') # 4x downsample
+    bn3 = ll.BatchNormLayer(conv3, name='bn3')
+    conv4 = ll.Conv2DLayer(bn3, num_filters=128, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv2_2')
+    bn4 = ll.BatchNormLayer(conv4, name='bn4')
+    mp2 = ll.MaxPool2DLayer(bn4, 2, stride=2, name='mp2') # 4x downsample
     conv5 = ll.Conv2DLayer(mp2, num_filters=128, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv3_1')
-    conv6 = ll.Conv2DLayer(conv5, num_filters=128, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv3_2')
-    mp3 = ll.MaxPool2DLayer(conv6, 2, stride=2, name='mp3') # 8x downsample
+    bn5 = ll.BatchNormLayer(conv5, name='bn5')
+    conv6 = ll.Conv2DLayer(bn5, num_filters=128, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv3_2')
+    bn6 = ll.BatchNormLayer(conv6, name='bn6')
+    mp3 = ll.MaxPool2DLayer(bn6, 2, stride=2, name='mp3') # 8x downsample
     conv7 = ll.Conv2DLayer(mp3, num_filters=128, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv4_1')
-    conv8 = ll.Conv2DLayer(conv7, num_filters=128, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv4_2')
+    bn7 = ll.BatchNormLayer(conv7, name='bn7')
+    conv8 = ll.Conv2DLayer(bn7, num_filters=128, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv4_2')
+    bn8 = ll.BatchNormLayer(conv8, name='bn8')
     # f 68 s 8
     # now start the upsample
-    up = ll.Upscale2DLayer(conv8, 8, name='upsample_8x')
+    up = ll.Upscale2DLayer(bn8, 8, name='upsample_8x')
     conv_f = ll.Conv2DLayer(up, num_filters=2, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=linear, name='conv_final')
     softmax = Softmax4D(conv_f, name='4dsoftmax')
     return [softmax]
-
 
 def build_segmenter_jet():
     # downsample down to a small region, then upsample all the way back up, using jet architecture
@@ -244,27 +353,35 @@ def build_segmenter_jet_2():
     # this jet will have another conv layer in the final upsample
     inp = ll.InputLayer(shape=(None, 1, None, None), name='input')
     conv1 = ll.Conv2DLayer(inp, num_filters=32, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv1_1')
-    conv2 = ll.Conv2DLayer(conv1, num_filters=64, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv1_2')
-    mp1 = ll.MaxPool2DLayer(conv2, 2, stride=2, name='mp1') # 2x downsample
+    bn1 = ll.BatchNormLayer(conv1, name='bn1')
+    conv2 = ll.Conv2DLayer(bn1, num_filters=64, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv1_2')
+    bn2 = ll.BatchNormLayer(conv2, name='bn2')
+    mp1 = ll.MaxPool2DLayer(bn2, 2, stride=2, name='mp1') # 2x downsample
     conv3 = ll.Conv2DLayer(mp1, num_filters=128, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv2_1')
-    conv4 = ll.Conv2DLayer(conv3, num_filters=128, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv2_2')
-    mp2 = ll.MaxPool2DLayer(conv4, 2, stride=2, name='mp2') # 4x downsample
+    bn3 = ll.BatchNormLayer(conv3, name='bn3')
+    conv4 = ll.Conv2DLayer(bn3, num_filters=128, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv2_2')
+    bn4 = ll.BatchNormLayer(conv4, name='bn4')
+    mp2 = ll.MaxPool2DLayer(bn4, 2, stride=2, name='mp2') # 4x downsample
     conv5 = ll.Conv2DLayer(mp2, num_filters=128, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv3_1')
-    conv6 = ll.Conv2DLayer(conv5, num_filters=128, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv3_2')
-    mp3 = ll.MaxPool2DLayer(conv6, 2, stride=2, name='mp3') # 8x downsample
+    bn5 = ll.BatchNormLayer(conv5, name='bn5')
+    conv6 = ll.Conv2DLayer(bn5, num_filters=128, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv3_2')
+    bn6 = ll.BatchNormLayer(conv6, name='bn6')
+    mp3 = ll.MaxPool2DLayer(bn6, 2, stride=2, name='mp3') # 8x downsample
     conv7 = ll.Conv2DLayer(mp3, num_filters=128, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv4_1')
-    conv8 = ll.Conv2DLayer(conv7, num_filters=128, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv4_2')
+    bn7 = ll.BatchNormLayer(conv7, name='bn7')
+    conv8 = ll.Conv2DLayer(bn7, num_filters=128, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=rectify, name='conv4_2')
+    bn8 = ll.BatchNormLayer(conv8, name='bn8')
     # f 68 s 8
     # now start the upsample
     ## FIRST UPSAMPLE PREDICTION (akin to FCN-32s)
-    conv_f8 = ll.Conv2DLayer(conv8, num_filters=2, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=linear,
+    conv_f8 = ll.Conv2DLayer(bn8, num_filters=2, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=linear,
                              name='conv_8xpred')
     softmax_8 = Softmax4D(conv_f8, name='4dsoftmax_8x')
     up8 = ll.Upscale2DLayer(softmax_8, 8, name='upsample_8x') # take loss here, 8x upsample from 8x downsample
 
     ## COMBINE BY UPSAMPLING SOFTMAX 8 AND PRED ON CONV 6
     softmax_4up = ll.Upscale2DLayer(softmax_8, 2, name='upsample_4x_pre') # 4x downsample
-    conv_f6 = ll.Conv2DLayer(conv6, num_filters=2, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=linear,
+    conv_f6 = ll.Conv2DLayer(bn6, num_filters=2, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=linear,
                              name='conv_4xpred')
     softmax_4 = Softmax4D(conv_f6, name='4dsoftmax_4x') # 4x downsample
     softmax_4_merge = ll.ElemwiseSumLayer([softmax_4, softmax_4up], coeffs=0.5, name='softmax_4_merge')
@@ -273,7 +390,7 @@ def build_segmenter_jet_2():
 
     ## COMBINE BY UPSAMPLING SOFTMAX_4_MERGE AND CONV 4
     softmax_2up = ll.Upscale2DLayer(softmax_4_merge, 2, name='upsample_2x_pre') # 2x downsample
-    conv_f4 = ll.Conv2DLayer(conv4, num_filters=2, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=linear,
+    conv_f4 = ll.Conv2DLayer(bn4, num_filters=2, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=linear,
                              name='conv_2xpred')
 
     softmax_2 = Softmax4D(conv_f4, name='4dsoftmax_2x')
@@ -283,7 +400,7 @@ def build_segmenter_jet_2():
 
     ## COMBINE BY UPSAMPLING SOFTMAX_2_MERGE AND CONV 2
     softmax_1up = ll.Upscale2DLayer(softmax_2_merge, 2, name='upsample_1x_pre') # 1x downsample (i.e. no downsample)
-    conv_f2 = ll.Conv2DLayer(conv2, num_filters=2, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=linear,
+    conv_f2 = ll.Conv2DLayer(bn2, num_filters=2, filter_size=(3,3), pad='same', W=Orthogonal(), nonlinearity=linear,
                              name='conv_1xpred')
 
     softmax_1 = Softmax4D(conv_f2, name='4dsoftmax_1x')

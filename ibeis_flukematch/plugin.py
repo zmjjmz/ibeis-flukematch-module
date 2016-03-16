@@ -47,7 +47,8 @@ from ibeis_flukematch.flukematch import (find_trailing_edge_cpp,
                                          setup_kp_network,
                                          infer_kp,
                                          setup_te_network,
-                                         score_te,)
+                                         score_te,
+                                         curv_weight_gen,)
 (print, rrr, profile) = ut.inject2(__name__, '[flukeplug]')
 
 ROOT = ibeis.const.ANNOTATION_TABLE
@@ -177,7 +178,8 @@ class NotchTipConfig(dtool.Config):
         return [
             ut.ParamInfo('manual_extract', False, hideif=False),
             #ut.ParamInfo('ntversion', 1)
-            ut.ParamInfo('version', 1),
+            ut.ParamInfo('version', 2),
+            ut.ParamInfo('kp_net', '256_decoupled'),
         ]
 
 
@@ -260,7 +262,7 @@ def preproc_notch_tips(depc, cid_list, config=None):
         fn = join(ibs.get_dbdir(), 'fluke_image_points.pkl')
         img_points_map = ut.load_cPkl(fn)
     else:
-        network_data = setup_kp_network()
+        network_data = setup_kp_network(config['kp_net'])
         # process all the points at once
         # TODO: Is this the best way to do this? Or should we do it in the main
         # loop? Another preproc node?
@@ -271,7 +273,7 @@ def preproc_notch_tips(depc, cid_list, config=None):
         networkfn = network_data['networkfn']
         mean = network_data['mean']
         std = network_data['std']
-        pt_preds = infer_kp(img_paths, networkfn, mean, std)
+        pt_preds = infer_kp(img_paths, networkfn, mean, std, input_size=network_data['input_size'])
         img_points_map = {img_name: pt_pred for img_name, pt_pred in zip(img_names, pt_preds)}
 
     def inbounds(size, point):
@@ -316,8 +318,8 @@ def preproc_notch_tips(depc, cid_list, config=None):
 class CropChipConfig(dtool.Config):
     def get_param_info_list(self):
         return [
-            ut.ParamInfo('crop_dim_size', 960, 'sz'),
-            ut.ParamInfo('crop_enabled', False, hideif=False),
+            ut.ParamInfo('crop_dim_size', 750, 'sz', hideif=750),
+            ut.ParamInfo('crop_enabled', True, hideif=False),
             #ut.ParamInfo('ccversion', 1)
             ut.ParamInfo('version', 2),
         ]
@@ -438,15 +440,15 @@ def overlay_fluke_feats(img, path=None, tips=None, score_pred=None):
 class TrailingEdgeConfig(dtool.Config):
     def get_param_info_list(self):
         return [
-            ut.ParamInfo('n_neighbors', 5, 'n_nb'),
+            ut.ParamInfo('n_neighbors', 3, 'n_nb'),
             ut.ParamInfo('ignore_notch', False, 'ign_n', hideif=False),
             #ut.ParamInfo('teversion', 1),
-            ut.ParamInfo('version', 5),
-            ut.ParamInfo('use_te_scorer', False, 'te_s', hideif=False),
+            ut.ParamInfo('version', 9),
+            ut.ParamInfo('use_te_scorer', True, 'te_s', hideif=False),
             ut.ParamInfo('te_score_weight', 0.5, 'w_tes'),
-            ut.ParamInfo('te_net', 'fbannot_simple'),
+            ut.ParamInfo('te_net', 'annot_res'),
             ut.ParamInfo('te_score_method', 'avg', 'te_sm'),
-            ut.ParamInfo('equalize_hist',False,'eqH'),
+            ut.ParamInfo('tol',None), # allow the trailing edge to go x percentage of the image height below
         ]
 
 
@@ -516,7 +518,7 @@ def preproc_trailing_edge(depc, cpid_list, config=None):
     #image_paths = ibs.get_annot_image_paths(aid_list)
     if config['use_te_scorer']:
         network_data = setup_te_network(config['te_net'])
-        score_preds = score_te(img_paths, eqH=config['equalize_hist'], **network_data)
+        score_preds = score_te(img_paths, **network_data)
     else:
         score_preds = [None for _ in img_paths]
 
@@ -540,8 +542,6 @@ def preproc_trailing_edge(depc, cpid_list, config=None):
     for img_path, point_set, score_pred in progiter:
         img = cv2.imread(img_path)
         img_grey = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        if config['equalize_hist']:
-            img_grey = cv2.equalizeHist(img_grey)
         left, right, notch = point_set[1], point_set[2], point_set[0]
         left = fix_point(left.round().astype(np.int))
         right = fix_point(right.round().astype(np.int))
@@ -552,12 +552,12 @@ def preproc_trailing_edge(depc, cpid_list, config=None):
                 img_grey, left, right, notch,
                 n_neighbors=n_neighbors, ignore_notch=config['ignore_notch'],
                 score_mat=score_pred, score_weight=config['te_score_weight'],
-                score_method=config['te_score_method'])
+                score_method=config['te_score_method'], tol=config['tol'])
+            yield (tedge, cost, score_pred)
         except IndexError as ie:
             print(ie)
             print("Bad points for %s: %r" % (img_path, point_set))
             yield None
-        yield (tedge, cost, score_pred)
 
 
 #def preproc_binarized(coords, sizes):
@@ -598,14 +598,17 @@ def preproc_trailing_edge(depc, cpid_list, config=None):
 class BlockCurvConfig(dtool.Config):
     def get_param_info_list(self):
         return [
-            ut.ParamInfo('sizes', [1, 2, 3, 4]), # these are percentage (as ints) of trailing edge width
+            ut.ParamInfo('csize_max', 8),
+            ut.ParamInfo('csize_min', 2),
+            ut.ParamInfo('csize_step', 2),
+            #ut.ParamInfo('sizes', [2, 4, 6, 8]), # these are percentage (as ints) of trailing edge width
             ut.ParamInfo('version', 2),
         ]
 
 
 @register_preproc('Block_Curvature', ['Trailing_Edge'], ['curvature'], [np.ndarray],
                   configclass=BlockCurvConfig, chunksize=256)
-def preproc_block_curvature(depc, te_rowids, config={'sizes': [1, 2, 3, 4]}):
+def preproc_block_curvature(depc, te_rowids, config):
     r"""
     Args:
         depc (DependencyCache):
@@ -646,13 +649,17 @@ def preproc_block_curvature(depc, te_rowids, config={'sizes': [1, 2, 3, 4]}):
     # NOTE: Can specify a single column, so unpacking is done automatically
     tedges = ibs.depc.get_native_property('Trailing_Edge', te_rowids, 'edge')
     # FIXME: CONFIG
-    sizes = map(lambda x: float(x) / 100, config['sizes'])
+    sizes = list(range(config['csize_min'], config['csize_max'] + 1, config['csize_step']))
+    sizes = map(lambda x: float(x) / 100, sizes)
 
     # call flukematch.block_integral_curvatures_cpp
     progiter = ut.ProgIter(tedges, lbl='compute Block_Curvature')
     for tedge in progiter:
-        curve_arr = block_integral_curvatures_cpp(sizes, tedge)
-        yield (curve_arr,)
+        if tedge is None:
+            yield None
+        else:
+            curve_arr = block_integral_curvatures_cpp(sizes, tedge)
+            yield (curve_arr,)
 
 
 def get_match_results(depc, qaid_list, daid_list, score_list, config):
@@ -733,17 +740,18 @@ class BC_DTW_Config(dtool.Config):
             #ut.ParamInfo('score_method', 'csum'),
             # should this be the only thing here?
             #ut.ParamInfo('daids', None),
-            ut.ParamInfo('decision', 'average'),
+            ut.ParamInfo('decision', 'max'),
             #ut.ParamInfo('sizes', (5, 10, 15, 20)),
-            ut.ParamInfo('weights', None),
+            ut.ParamInfo('weight_import', 1),
             ut.ParamInfo('window', 10),
             #ut.ParamInfo('bcdtwversion', 1),
-            ut.ParamInfo('version', 5),
+            ut.ParamInfo('version', 8),
         ]
 
 
 class BC_DTW_Request(dtool.base.VsOneSimilarityRequest):
     _tablename = 'BC_DTW'
+    _symmetric = False
     @ut.accepts_scalar_input
     def get_fmatch_overlayed_chip(request, aid_list, config=None):
         """
@@ -817,12 +825,8 @@ def id_algo_bc_dtw(depc, qaid_list, daid_list, config):
         >>> ut.show_if_requested()
     """
     print('Executing BC_DTW')
-    curv_weights = config['weights']
-    sizes = config.block_curv_cfg['sizes']
-    if curv_weights is not None:
-        assert(len(curv_weights) == len(sizes))
-    else:
-        curv_weights = [1.] * len(sizes)
+    sizes = list(range(config.block_curv_cfg['csize_min'], config.block_curv_cfg['csize_max'] + 1, config.block_curv_cfg['csize_step']))
+    curv_weights = curv_weight_gen(config['weight_import'], sizes)
     # Group pairs by qaid
     all_aids = np.unique(ut.flatten([qaid_list, daid_list]))
     all_curves = depc.get('Block_Curvature', all_aids, 'curvature', config=config)
@@ -831,7 +835,7 @@ def id_algo_bc_dtw(depc, qaid_list, daid_list, config):
         query_curv = aid_to_curves[qaid]
         db_curv = aid_to_curves[daid]
         if query_curv is None or db_curv is None:
-            print("Comparison of qaid: %d and daid: %d -- one of the curvatures is None, skipping" % (qaid, daid))
+            #print("Comparison of qaid: %d and daid: %d -- one of the curvatures is None, skipping" % (qaid, daid))
             yield None
         else:
             # determine window as a percentage of the query trailing edge

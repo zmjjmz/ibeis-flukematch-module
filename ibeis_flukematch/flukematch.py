@@ -5,12 +5,16 @@ import numpy as np
 import ctypes
 from os.path import dirname, join
 from ibeis_flukematch.networks import (
-        build_kpextractor128_decoupled,
+        # tescorers
         build_segmenter_simple,
         build_segmenter_upsample,
         build_segmenter_jet,
         build_segmenter_jet_2,
         build_segmenter_simple_absurd_res,
+        # kpextractors
+        build_kpextractor64_decoupled,
+        build_kpextractor128_decoupled,
+        build_kpextractor256_decoupled,
         )
 import utool as ut
 import theano.tensor as T
@@ -19,17 +23,26 @@ import lasagne.layers as ll
 from itertools import chain
 import math
 
+KP_NETWORK_OPTIONS = {
+'64_decoupled':{'url':'kpext_64_decoupled.pickle', 'exp':build_kpextractor64_decoupled, 'size':(64,64)},
+'128_decoupled':{'url':'kpext_128_decoupled.pickle', 'exp':build_kpextractor128_decoupled, 'size':(128,128)},
+'128_decoupled_nofb':{'url':'kpext_128_decoupled_nofb.pickle', 'exp':build_kpextractor128_decoupled, 'size':(128,128)},
+'256_decoupled':{'url':'kpext_256_decoupled.pickle', 'exp':build_kpextractor256_decoupled, 'size':(256,256)},
+}
 
-def setup_kp_network():
-    network_params_path = ut.grab_file_url('http://lev.cs.rpi.edu/public/models/kpextractor_weights.pickle', appname='ibeis')
+def setup_kp_network(network_str):
+    fn = KP_NETWORK_OPTIONS[network_str]['url']
+    file_url = join('http://lev.cs.rpi.edu/public/models/',fn)
+    network_params_path = ut.grab_file_url(file_url, appname='ibeis')
     network_params = ut.load_cPkl(network_params_path)
     # network_params also includes normalization constants needed for the dataset, and is assumed to be a dictionary
     # with keys mean, std, and params
-    network_exp = build_kpextractor128_decoupled()
+    network_exp = KP_NETWORK_OPTIONS[network_str]['exp']()
     ll.set_all_param_values(network_exp, network_params['params'])
     X = T.tensor4()
     network_fn = tfn([X], ll.get_output(network_exp, X, deterministic=True))
-    return {'mean': network_params['mean'], 'std': network_params['std'], 'networkfn': network_fn}
+    return {'mean': network_params['mean'], 'std': network_params['std'], 'networkfn': network_fn,
+            'input_size':KP_NETWORK_OPTIONS[network_str]['size']}
 
 
 def bound_output(output, size_mat):
@@ -82,7 +95,7 @@ def infer_kp(img_paths, networkfn, mean, std, batch_size=32, input_size=(128, 12
 TE_NETWORK_OPTIONS = {
 'annot_simple':{'url':'tescorer_annot_simple.pickle', 'exp':build_segmenter_simple},
 'fbannot_simple':{'url':'tescorer_fbannot_simple.pickle', 'exp':build_segmenter_simple},
-#'annot_upsample':{'url':'tescorer_annot_upsample.pickle', 'exp':build_segmenter_upsample},
+'annot_upsample':{'url':'tescorer_annot_upsample.pickle', 'exp':build_segmenter_upsample},
 #'fbannot_upsample':{'url':'tescorer_fbannot_upsample.pickle', 'exp':build_segmenter_upsample},
 'annot_jet':{'url':'tescorer_annot_jet.pickle', 'exp':build_segmenter_jet},
 'fbannot_jet':{'url':'tescorer_fbannot_jet.pickle', 'exp':build_segmenter_jet},
@@ -127,7 +140,7 @@ def safe_load(networkfn, img):
         print("[score_te] ERROR: GPU ran out of memory trying to process an image of size %r" % (img.shape,))
         return None
 
-def score_te(img_paths, networkfn, mean, std, mod_acc=None, batch_size=32, input_size=None, eqH=False):
+def score_te(img_paths, networkfn, mean, std, mod_acc=None, batch_size=32, input_size=None):
     # load up the images in batches
     nbatches = int(math.ceil(len(img_paths) / batch_size))
     predictions = []
@@ -138,8 +151,6 @@ def score_te(img_paths, networkfn, mean, std, mod_acc=None, batch_size=32, input
         batch_sizes = []
         for img_path in img_paths[batch_slice]:
             img = cv2.cvtColor(cv2.imread(img_path), cv2.COLOR_BGR2GRAY)
-            if eqH:
-                img = cv2.equalizeHist(img)
             original_size = img.shape[::-1]
             batch_sizes.append(original_size)
             if mod_acc is not None:
@@ -272,7 +283,7 @@ def normalize_01(img):
 
 
 def find_trailing_edge_cpp(img, start, end, center, n_neighbors=5, ignore_notch=False, score_mat=None,
-                           score_method='avg', score_weight=0.5):
+                           score_method='avg', score_weight=0.5, tol=None):
     # points are x,y
     if len(img.shape) == 3:
         img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -329,6 +340,18 @@ def find_trailing_edge_cpp(img, start, end, center, n_neighbors=5, ignore_notch=
         if not ignore_notch:
             score_grad[:, center[0]] = 1 * np.inf
             score_grad[center[1], center[0]] = 0
+
+        if tol is not None:
+            # between start, end, and center find the highest / lowest points
+            # we're then going to bound the trailing edge below and above these
+            lowest_point = max(start[1], center[1], end[1])
+            bound_low = min(lowest_point + int(img.shape[0] * (tol / 100)) + 1, img.shape[0])
+
+            highest_point = min(start[1], center[1], end[1])
+            bound_high = max(highest_point - int(img.shape[0] * (tol / 100)) - 1, 0)
+
+            score_grad[bound_low:,:] = 1 * np.inf
+            score_grad[:bound_high,:] = 1 * np.inf
     except IndexError:
         print("[find_te] Bad points: start: %s, end: %s, center: %s" % (start, end, center))
         raise
@@ -439,8 +462,18 @@ def get_distance_curvweighted(query_curv, db_curv, curv_weights, window=50):
     distance = distance_mat[-1, -1]
     return distance
 
+def curv_weight_gen(rel_importance, sizes):
+    # ok, so let's do this: basically each curvature is weighted as rel_importance compared to the previous one
+    # so essentially we're doing each weight as rel_importance^(i)
+    # then we'll divide each by the sum of the weights to keep the sum of these weights at one while preserving the ratio
+    weights = [1]
+    for _ in range(1,len(sizes)): # reduce by one to account for the first weight
+        weights.append(weights[-1] * rel_importance)
+    weights = map(lambda x: x / sum(weights), weights)
+    return weights
+
 if __name__ == '__main__':
-    r"""
+    """
     CommandLine:
         python -m ibeis_flukematch.flukematch
         python -m ibeis_flukematch.flukematch --allexamples
