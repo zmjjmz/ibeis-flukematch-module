@@ -178,8 +178,8 @@ class NotchTipConfig(dtool.Config):
         return [
             ut.ParamInfo('manual_extract', False, hideif=False),
             #ut.ParamInfo('ntversion', 1)
-            ut.ParamInfo('version', 2),
-            ut.ParamInfo('kp_net', '256_decoupled'),
+            ut.ParamInfo('version', 4),
+            ut.ParamInfo('kp_net', '128_decoupled'),
         ]
 
 
@@ -420,20 +420,20 @@ def preproc_cropped_chips(depc, cid_list, tipid_list, config=None):
         yield (path, bbox[2], bbox[3], M, notch_, left_, right_)
 
 
-def overlay_fluke_feats(img, path=None, tips=None, score_pred=None):
-    img_copy = img[:]
+def overlay_fluke_feats(img, path=None, tips=None, score_pred=None, edge_color=(255,0,0), kp_color=(0, 128, 255)):
+    img_copy = np.copy(img)
     # assume path is x, y
     if path is not None:
         for j, i in path:
             if (j >= img_copy.shape[1] or j < 0) or (i >= img_copy.shape[0] or i < 0):
                     continue
-            cv2.circle(img_copy, (j, i), 2, (255, 0, 0), thickness=-1)
+            cv2.circle(img_copy, (j, i), 2, edge_color, thickness=-1)
 
     if tips is not None:
         for pt in tips:
             pt1 = np.array(np.round(pt), dtype=np.int)
             pt1 = tuple(pt1.tolist())
-            cv2.circle(img_copy, pt1, 7, (0, 128, 255), thickness=-7)
+            cv2.circle(img_copy, pt1, 7, kp_color, thickness=-7)
     return img_copy
 
 
@@ -441,7 +441,7 @@ class TrailingEdgeConfig(dtool.Config):
     def get_param_info_list(self):
         return [
             ut.ParamInfo('n_neighbors', 3, 'n_nb'),
-            ut.ParamInfo('ignore_notch', False, 'ign_n', hideif=False),
+            ut.ParamInfo('ignore_notch', True, 'ign_n', hideif=False),
             #ut.ParamInfo('teversion', 1),
             ut.ParamInfo('version', 9),
             ut.ParamInfo('use_te_scorer', True, 'te_s', hideif=False),

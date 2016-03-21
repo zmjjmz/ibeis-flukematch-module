@@ -26,7 +26,6 @@ import math
 KP_NETWORK_OPTIONS = {
 '64_decoupled':{'url':'kpext_64_decoupled.pickle', 'exp':build_kpextractor64_decoupled, 'size':(64,64)},
 '128_decoupled':{'url':'kpext_128_decoupled.pickle', 'exp':build_kpextractor128_decoupled, 'size':(128,128)},
-'128_decoupled_nofb':{'url':'kpext_128_decoupled_nofb.pickle', 'exp':build_kpextractor128_decoupled, 'size':(128,128)},
 '256_decoupled':{'url':'kpext_256_decoupled.pickle', 'exp':build_kpextractor256_decoupled, 'size':(256,256)},
 }
 
