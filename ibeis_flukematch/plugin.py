@@ -60,7 +60,7 @@ def testdata_humpbacks():
     import ibeis
     ibs = ibeis.opendb(defaultdb='humpbacks')
     all_aids = ibs.get_valid_aids()
-    isvalid = ibs.depc.get_property('Has_Notch', all_aids, 'flag')
+    isvalid = ibs.depc.get('Has_Notch', all_aids, 'flag')
     aid_list = ut.compress(all_aids, isvalid)
     aid_list = aid_list[0:10]
     return ibs, aid_list
@@ -102,7 +102,7 @@ def debug_depcache(ibs):
         ut.printex(ex, iswarning=True)
 
     all_aids = ibs.get_valid_aids()
-    isvalid = ibs.depc.get_property('Has_Notch', all_aids, 'flag')
+    isvalid = ibs.depc.get('Has_Notch', all_aids, 'flag')
     aid_list = ut.compress(all_aids, isvalid)
     aid_list = aid_list[0:10]
     ibs.depc.print_config_tables()
@@ -216,7 +216,7 @@ def preproc_notch_tips(depc, cid_list, config=None):
         >>> from ibeis_flukematch.plugin import *  # NOQA
         >>> ibs = ibeis.opendb(defaultdb='humpbacks')
         >>> all_aids = ibs.get_valid_aids()
-        >>> isvalid = ibs.depc.get_property('Has_Notch', all_aids, 'flag')
+        >>> isvalid = ibs.depc.get('Has_Notch', all_aids, 'flag')
         >>> aid_list = ut.compress(all_aids, isvalid)
         >>> aid_list = aid_list[0:10]
         >>> #config = dict(dim_size=None)
@@ -322,6 +322,7 @@ class CropChipConfig(dtool.Config):
             ut.ParamInfo('crop_enabled', True, hideif=False),
             #ut.ParamInfo('ccversion', 1)
             ut.ParamInfo('version', 2),
+            ut.ParamInfo('ext', '.png'),
         ]
 
 
@@ -330,7 +331,7 @@ class CropChipConfig(dtool.Config):
     'Cropped_Chips',
     parents=[const.CHIP_TABLE, 'Notch_Tips'],
     colnames=['img', 'width', 'height', 'M', 'notch', 'left', 'right'],
-    coltypes=[('extern', vt.imread), int, int, np.ndarray, np.ndarray, np.ndarray, np.ndarray],
+    coltypes=[('extern', vt.imread, vt.imwrite), int, int, np.ndarray, np.ndarray, np.ndarray, np.ndarray],
     configclass=CropChipConfig,
     fname='cropped_chip'
 )
@@ -350,13 +351,14 @@ def preproc_cropped_chips(depc, cid_list, tipid_list, config=None):
         >>> list(preproc_cropped_chips(depc, cid_list, tipid_list, config))
         >>> #cpid_list = ibs.depc.d.get_Cropped_Chips_rowids(aid_list, config)
         >>> #cpid_list = ibs.depc.w.Cropped_Chips.get_rowids(aid_list, config)
-        >>> chip_list = ibs.depc.get_property('Cropped_Chips', aid_list, 'img', config)
-        >>> notch_tips = ibs.depc.get_property('Cropped_Chips', aid_list, ('notch', 'left', 'right'), config)
+        >>> chip_list = ibs.depc.get('Cropped_Chips', aid_list, 'img', config)
+        >>> notch_tips = ibs.depc.get('Cropped_Chips', aid_list, ('notch', 'left', 'right'), config)
         >>> import plottool as pt
         >>> ut.ensure_pylab_qt4()
-        >>> for notch, chip in ut.InteractiveIter(zip(notch_tips, chip_list)):
+        >>> for notch, chip, aid in ut.InteractiveIter(zip(notch_tips, chip_list, aid_list)):
         >>>     pt.reset()
         >>>     pt.imshow(chip)
+        >>>     print(ibs.depc.get('Cropped_Chips', [aid], 'img', config, read_extern=False)[0])
         >>>     kpts_ = np.array(notch)
         >>>     pt.draw_kpts2(kpts_, pts=True, ell=False, pts_size=20)
         >>>     pt.update()
@@ -366,15 +368,16 @@ def preproc_cropped_chips(depc, cid_list, tipid_list, config=None):
     img_list = depc.get_native_property(const.CHIP_TABLE, cid_list, 'img')
     tips_list = depc.get_native_property('Notch_Tips', tipid_list, ('left', 'notch', 'right'))
 
-    imgpath_list = depc.get_native_property(const.CHIP_TABLE, cid_list, 'img',
-                                            read_extern=False)
+    #imgpath_list = depc.get_native_property(const.CHIP_TABLE, cid_list, 'img',
+    #                                        read_extern=False)
 
     cropped_chip_dpath = depc.controller.get_chipdir() + '_crop'
     ut.ensuredir(cropped_chip_dpath)
-    crop_path_list = [ut.augpath(path, '_crop' + config.get_hashid())
-                      for path in imgpath_list]
+    #crop_path_list = [ut.augpath(path, '_crop' + config.get_hashid())
+    #                  for path in imgpath_list]
 
-    for img, tips, path in zip(img_list, tips_list, crop_path_list):
+    #for img, tips, path in zip(img_list, tips_list, crop_path_list):
+    for img, tips in zip(img_list, tips_list):
         left, notch, right = tips
         bbox = (0, 0, img.shape[1], img.shape[0])  # default to bbox being whole image
         chip_size = (img.shape[1], img.shape[0])
@@ -415,12 +418,11 @@ def preproc_cropped_chips(depc, cid_list, tipid_list, config=None):
         notch_ = bound_point(notch_, chip_size)
         left_  = bound_point(left_, chip_size)
         right_ = bound_point(right_, chip_size)
-        vt.imwrite(path, new_img)
+        #vt.imwrite(path, new_img)
+        yield (new_img, bbox[2], bbox[3], M, notch_, left_, right_)
 
-        yield (path, bbox[2], bbox[3], M, notch_, left_, right_)
 
-
-def overlay_fluke_feats(img, path=None, tips=None, score_pred=None, edge_color=(255,0,0), kp_color=(0, 128, 255)):
+def overlay_fluke_feats(img, path=None, tips=None, score_pred=None, edge_color=(255, 0, 0), kp_color=(0, 128, 255)):
     img_copy = np.copy(img)
     # assume path is x, y
     if path is not None:
@@ -448,7 +450,7 @@ class TrailingEdgeConfig(dtool.Config):
             ut.ParamInfo('te_score_weight', 0.5, 'w_tes'),
             ut.ParamInfo('te_net', 'annot_res'),
             ut.ParamInfo('te_score_method', 'avg', 'te_sm'),
-            ut.ParamInfo('tol',None), # allow the trailing edge to go x percentage of the image height below
+            ut.ParamInfo('tol', None),  # allow the trailing edge to go x percentage of the image height below
         ]
 
 
@@ -480,7 +482,7 @@ def preproc_trailing_edge(depc, cpid_list, config=None):
         >>> from ibeis_flukematch.plugin import *  # NOQA
         >>> ibs = ibeis.opendb(defaultdb='humpbacks')
         >>> all_aids = ibs.get_valid_aids()
-        >>> isvalid = ibs.depc.get_property('Has_Notch', all_aids, 'flag')
+        >>> isvalid = ibs.depc.get('Has_Notch', all_aids, 'flag')
         >>> aid_list = ut.compress(all_aids, isvalid)[0:10]
         >>> print('aid_list = %r' % (aid_list,))
         >>> depc = ibs.depc
@@ -495,8 +497,8 @@ def preproc_trailing_edge(depc, cpid_list, config=None):
         >>> # Visualize
         >>> #aid_list = [2826]
         >>> #chipcfg = ibeis.algo.preproc.preproc_chip.ChipConfig(dim_size=None)
-        >>> chips = depc.get_property('Cropped_Chips', aid_list, 'img', config=config, _debug=True)
-        >>> notches = depc.get_property('Cropped_Chips', aid_list, ('notch', 'left', 'right'), config=config, _debug=True)
+        >>> chips = depc.get('Cropped_Chips', aid_list, 'img', config=config, _debug=True)
+        >>> notches = depc.get('Cropped_Chips', aid_list, ('notch', 'left', 'right'), config=config, _debug=True)
         >>> overlay_chips = [overlay_fluke_feats(chip, path, tips=tips) for chip, path, tips in zip(chips, tedge_list, notches)]
         >>> import plottool as pt
         >>> iteract_obj = pt.interact_multi_image.MultiImageInteraction(overlay_chips, nPerPage=4)
@@ -510,7 +512,7 @@ def preproc_trailing_edge(depc, cpid_list, config=None):
     config = config.copy()
     ibs = depc.controller
     # get the notch / left / right points
-    # points = ibs.depc.get_property('Notch_Tips', aid_list)
+    # points = ibs.depc.get('Notch_Tips', aid_list)
     img_paths = ibs.depc.get_native_property('Cropped_Chips', cpid_list, 'img', read_extern=False)
     points = ibs.depc.get_native_property('Cropped_Chips', cpid_list, ('notch', 'left', 'right'))
     # get the actual images
@@ -566,9 +568,9 @@ def preproc_trailing_edge(depc, cpid_list, config=None):
 #        >>> from ibeis_flukematch.plugin import *  # NOQA
 #        >>> ibs = ibeis.opendb(defaultdb='humpbacks')
 #        >>> all_aids = ibs.get_valid_aids()
-#        >>> isvalid = ibs.depc.get_property('Has_Notch', all_aids, 'flag', _debug=True)
+#        >>> isvalid = ibs.depc.get('Has_Notch', all_aids, 'flag', _debug=True)
 #        >>> aid_list = ut.compress(all_aids, isvalid)[0:1]
-#        >>> tedges = depc.get_property('Trailing_Edge', aid_list, 'edge', config)
+#        >>> tedges = depc.get('Trailing_Edge', aid_list, 'edge', config)
 #        >>> coords = tedges[0]
 #        >>> sizes = [20]
 #    """
@@ -627,7 +629,7 @@ def preproc_block_curvature(depc, te_rowids, config):
         >>> from ibeis_flukematch.plugin import *  # NOQA
         >>> ibs = ibeis.opendb(defaultdb='humpbacks')
         >>> all_aids = ibs.get_valid_aids()
-        >>> isvalid = ibs.depc.get_property('Has_Notch', all_aids, 'flag', _debug=True)
+        >>> isvalid = ibs.depc.get('Has_Notch', all_aids, 'flag', _debug=True)
         >>> aid_list = ut.compress(all_aids, isvalid)[0:4]
         >>> print('\n!!![test] aid_list = %r' % (aid_list,))
         >>> depc = ibs.depc
@@ -762,10 +764,10 @@ class BC_DTW_Request(dtool.base.VsOneSimilarityRequest):
         # FIXME: THIS STRUCTURE OF TELLING HOW FEATURE
         # MATCHES SHOULD BE VISUALIZED IS NOT FINAL.
         depc = request.depc
-        chips = depc.get_property('Cropped_Chips', aid_list, 'img', config=config)
-        points = depc.get_property('Cropped_Chips', aid_list, ('notch', 'left', 'right'),
+        chips = depc.get('Cropped_Chips', aid_list, 'img', config=config)
+        points = depc.get('Cropped_Chips', aid_list, ('notch', 'left', 'right'),
                                    config=config)
-        tedge_list = depc.get_property('Trailing_Edge', aid_list, 'edge', config=config)
+        tedge_list = depc.get('Trailing_Edge', aid_list, 'edge', config=config)
         overlay_chips = [overlay_fluke_feats(chip, path=path, tips=tips)
                          for chip, path, tips in zip(chips, tedge_list, points)]
         return overlay_chips
