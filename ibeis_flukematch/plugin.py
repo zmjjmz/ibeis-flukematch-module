@@ -40,7 +40,7 @@ from os.path import join, exists
 from six.moves import cPickle as pickle  # NOQA
 from ibeis import constants as const
 #from collections import defaultdict
-from ibeis import register_preproc
+from ibeis import register_preprocs
 from ibeis_flukematch.flukematch import (find_trailing_edge_cpp,
                                          block_integral_curvatures_cpp,
                                          get_distance_curvweighted,
@@ -50,6 +50,8 @@ from ibeis_flukematch.flukematch import (find_trailing_edge_cpp,
                                          score_te,
                                          curv_weight_gen,)
 (print, rrr, profile) = ut.inject2(__name__, '[flukeplug]')
+
+register_preproc = register_preprocs['annot']
 
 ROOT = ibeis.const.ANNOTATION_TABLE
 
