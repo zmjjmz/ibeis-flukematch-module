@@ -9,6 +9,10 @@ CommandLine:
         -a default:has_any=hasnotch,mingt=2,size=50 \
         -t default:proot=BC_DTW --show
 
+    python -m ibeis -e rank_cdf --db humpbacks \
+        -a default:has_any=hasnotch,mingt=2 \
+        -t default:proot=BC_DTW --show
+
     # baseline test of algorithm in ipynb
     python -m ibeis --tf autogen_ipynb --ipynb --db humpbacks \
         -a default:has_any=hasnotch,mingt=2,size=50 \
@@ -855,6 +859,10 @@ if __name__ == '__main__':
     CommandLine:
         python -m ibeis_flukematch.plugin
         python -m ibeis_flukematch.plugin --allexamples
+        ibeis -e draw_cases --db humpbacks --show \
+           -a default:has_any=hasnotch,mingt=2,size=50 \
+           -t default:proot=BC_DTW -f :fail=False,index=0:3,sortdsc=gtscore,max_pername=1
+
     """
     import multiprocessing
     multiprocessing.freeze_support()  # for win32
