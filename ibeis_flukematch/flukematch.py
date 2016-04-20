@@ -73,7 +73,7 @@ def infer_kp(img_paths, networkfn, mean, std, batch_size=32, input_size=(128, 12
             img = cv2.cvtColor(cv2.imread(img_path), cv2.COLOR_BGR2GRAY)
             original_size = img.shape[::-1]
             batch_sizes.append(original_size)
-            img = cv2.resize(img, input_size, cv2.INTER_LANCZOS4)
+            img = cv2.resize(img, input_size, interpolation=cv2.INTER_LANCZOS4)
             img = np.expand_dims(img, axis=0)  # add a dummy channel
             # assume zscore normalization
             img = (img.astype(np.float32) - mean) / std
@@ -167,11 +167,11 @@ def score_te(img_paths, networkfn, mean, std, mod_acc=None, batch_size=32, input
             batch_sizes.append(original_size)
             if mod_acc is not None:
                 new_shape = make_acceptable_shape(mod_acc, img.shape)
-                img = cv2.resize(img, new_shape[::-1], cv2.INTER_LANCZOS4)
+                img = cv2.resize(img, new_shape[::-1], interpolation=cv2.INTER_LANCZOS4)
 
             if input_size is not None:
                 # note that input_size should be w, h
-                img = cv2.resize(img, input_size, cv2.INTER_LANCZOS4)
+                img = cv2.resize(img, input_size, interpolation=cv2.INTER_LANCZOS4)
             img = np.expand_dims(img, axis=0)  # add a dummy channel
             # assume zscore normalization
             img = (img.astype(np.float32) - mean) / std
@@ -185,9 +185,9 @@ def score_te(img_paths, networkfn, mean, std, mod_acc=None, batch_size=32, input
             if batch_outputs is not None:
                 batch_outputs = [i[bg_ind] for i in batch_outputs]
         else:
-            nd_imgs = [np.expand_dims(img, axis=0) for img in batch_imgs]
+            nd_imgs = [np.expand_dims(img_, axis=0) for img_ in batch_imgs]
             # denumpy it
-        batch_outputs = [safe_load(networkfn, img) for img in nd_imgs]
+        batch_outputs = [safe_load(networkfn, img_) for img_ in nd_imgs]
         # resize it to the original img shape if necessary
         batch_outputs_r = []
         for label, size in zip(batch_outputs, batch_sizes):
@@ -200,7 +200,7 @@ def score_te(img_paths, networkfn, mean, std, mod_acc=None, batch_size=32, input
             # should it be used here?
             if label.shape[2:] != img.shape[1:]:
                 batch_outputs_r.append(cv2.resize(
-                    label[0][bg_ind], size, cv2.INTER_LANCZOS4))
+                    label[0][bg_ind], size, interpolation=cv2.INTER_LANCZOS4))
             else:
                 batch_outputs_r.append(label[0][bg_ind])
 
@@ -306,7 +306,7 @@ def find_trailing_edge_cpp(img, start, end, center, n_neighbors=5, ignore_notch=
     assert(n_neighbors % 2 == 1)
     gradient_y_image = 1 * cv2.Sobel(img, cv2.CV_32F, 0, 1, ksize=5)
     # normalize so that all gradients lie in -1, 0
-    norm_grad = normalize_01(gradient_y_image)
+    norm_grad = normalize_01(gradient_y_image).astype(np.float32)
     # so now we still want to be minimizing, which means that the score_mat
     # can be directly used (as it is going to be in 0,1 probability of it
     # being bg)
@@ -314,6 +314,7 @@ def find_trailing_edge_cpp(img, start, end, center, n_neighbors=5, ignore_notch=
     # next question: how do we factor in the score?
     # Option 1: Just blend it in
     if score_mat is not None:
+        score_mat = score_mat.astype(np.float32)
         try:
             assert(score_mat.shape == norm_grad.shape)
         except AssertionError:
@@ -507,3 +508,4 @@ if __name__ == '__main__':
     multiprocessing.freeze_support()  # for win32
     import utool as ut  # NOQA
     ut.doctest_funcs()
+
