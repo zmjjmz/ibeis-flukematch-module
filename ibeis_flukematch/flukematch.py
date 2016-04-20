@@ -5,17 +5,17 @@ import numpy as np
 import ctypes
 from os.path import dirname, join
 from ibeis_flukematch.networks import (
-        # tescorers
-        build_segmenter_simple,
-        build_segmenter_upsample,
-        build_segmenter_jet,
-        build_segmenter_jet_2,
-        build_segmenter_simple_absurd_res,
-        # kpextractors
-        build_kpextractor64_decoupled,
-        build_kpextractor128_decoupled,
-        build_kpextractor256_decoupled,
-        )
+    # tescorers
+    build_segmenter_simple,
+    build_segmenter_upsample,
+    build_segmenter_jet,
+    build_segmenter_jet_2,
+    build_segmenter_simple_absurd_res,
+    # kpextractors
+    build_kpextractor64_decoupled,
+    build_kpextractor128_decoupled,
+    build_kpextractor256_decoupled,
+)
 import utool as ut
 import theano.tensor as T
 from theano import function as tfn
@@ -24,14 +24,15 @@ from itertools import chain
 import math
 
 KP_NETWORK_OPTIONS = {
-'64_decoupled':{'url':'kpext_64_decoupled.pickle', 'exp':build_kpextractor64_decoupled, 'size':(64,64)},
-'128_decoupled':{'url':'kpext_128_decoupled.pickle', 'exp':build_kpextractor128_decoupled, 'size':(128,128)},
-'256_decoupled':{'url':'kpext_256_decoupled.pickle', 'exp':build_kpextractor256_decoupled, 'size':(256,256)},
+    '64_decoupled': {'url': 'kpext_64_decoupled.pickle', 'exp': build_kpextractor64_decoupled, 'size': (64, 64)},
+    '128_decoupled': {'url': 'kpext_128_decoupled.pickle', 'exp': build_kpextractor128_decoupled, 'size': (128, 128)},
+    '256_decoupled': {'url': 'kpext_256_decoupled.pickle', 'exp': build_kpextractor256_decoupled, 'size': (256, 256)},
 }
+
 
 def setup_kp_network(network_str):
     fn = KP_NETWORK_OPTIONS[network_str]['url']
-    file_url = join('http://lev.cs.rpi.edu/public/models/',fn)
+    file_url = join('https://lev.cs.rpi.edu/public/models/', fn)
     network_params_path = ut.grab_file_url(file_url, appname='ibeis')
     network_params = ut.load_cPkl(network_params_path)
     # network_params also includes normalization constants needed for the dataset, and is assumed to be a dictionary
@@ -41,14 +42,15 @@ def setup_kp_network(network_str):
     X = T.tensor4()
     network_fn = tfn([X], ll.get_output(network_exp, X, deterministic=True))
     return {'mean': network_params['mean'], 'std': network_params['std'], 'networkfn': network_fn,
-            'input_size':KP_NETWORK_OPTIONS[network_str]['size']}
+            'input_size': KP_NETWORK_OPTIONS[network_str]['size']}
 
 
 def bound_output(output, size_mat):
     # make sure the output doessn't exceed the boundaries of the image
     # if it does, snap it to the edge of each dimension it exceeds
-    bound_below = np.max(np.stack([output, np.zeros(output.shape)], axis=2), axis=2)
-    bound_above = np.min(np.stack([bound_below, size_mat-1], axis=2), axis=2)
+    bound_below = np.max(
+        np.stack([output, np.zeros(output.shape)], axis=2), axis=2)
+    bound_above = np.min(np.stack([bound_below, size_mat - 1], axis=2), axis=2)
     return bound_above
 
 
@@ -61,8 +63,10 @@ def infer_kp(img_paths, networkfn, mean, std, batch_size=32, input_size=(128, 12
     nbatches = int(math.ceil(len(img_paths) / batch_size))
     predictions = []
     for batch_ind in range(nbatches):
-        batch_slice = slice(batch_ind * batch_size, (batch_ind + 1) * batch_size)
-        print("[infer_kp] Batch %d/%d, processing %d images" % (batch_ind, nbatches, len(img_paths[batch_slice])))
+        batch_slice = slice(batch_ind * batch_size,
+                            (batch_ind + 1) * batch_size)
+        print("[infer_kp] Batch %d/%d, processing %d images" %
+              (batch_ind, nbatches, len(img_paths[batch_slice])))
         batch_imgs = []
         batch_sizes = []
         for img_path in img_paths[batch_slice]:
@@ -92,17 +96,18 @@ def infer_kp(img_paths, networkfn, mean, std, batch_size=32, input_size=(128, 12
 
 
 TE_NETWORK_OPTIONS = {
-'annot_simple':{'url':'tescorer_annot_simple.pickle', 'exp':build_segmenter_simple},
-'fbannot_simple':{'url':'tescorer_fbannot_simple.pickle', 'exp':build_segmenter_simple},
-'annot_upsample':{'url':'tescorer_annot_upsample.pickle', 'exp':build_segmenter_upsample},
-#'fbannot_upsample':{'url':'tescorer_fbannot_upsample.pickle', 'exp':build_segmenter_upsample},
-'annot_jet':{'url':'tescorer_annot_jet.pickle', 'exp':build_segmenter_jet},
-'fbannot_jet':{'url':'tescorer_fbannot_jet.pickle', 'exp':build_segmenter_jet},
-'annot_jet2':{'url':'tescorer_annot_jet2.pickle', 'exp':build_segmenter_jet_2},
-'fbannot_jet2':{'url':'tescorer_fbannot_jet2.pickle', 'exp':build_segmenter_jet_2},
-#'fbannot_jet_preconv':{'url':'tescorer_fbannot_jet_preconv.pickle', 'exp':build_segmenter_jet_preconv},
-'annot_res':{'url':'tescorer_annot_res.pickle', 'exp':build_segmenter_simple_absurd_res},
+    'annot_simple': {'url': 'tescorer_annot_simple.pickle', 'exp': build_segmenter_simple},
+    'fbannot_simple': {'url': 'tescorer_fbannot_simple.pickle', 'exp': build_segmenter_simple},
+    'annot_upsample': {'url': 'tescorer_annot_upsample.pickle', 'exp': build_segmenter_upsample},
+    #'fbannot_upsample':{'url':'tescorer_fbannot_upsample.pickle', 'exp':build_segmenter_upsample},
+    'annot_jet': {'url': 'tescorer_annot_jet.pickle', 'exp': build_segmenter_jet},
+    'fbannot_jet': {'url': 'tescorer_fbannot_jet.pickle', 'exp': build_segmenter_jet},
+    'annot_jet2': {'url': 'tescorer_annot_jet2.pickle', 'exp': build_segmenter_jet_2},
+    'fbannot_jet2': {'url': 'tescorer_fbannot_jet2.pickle', 'exp': build_segmenter_jet_2},
+    #'fbannot_jet_preconv':{'url':'tescorer_fbannot_jet_preconv.pickle', 'exp':build_segmenter_jet_preconv},
+    'annot_res': {'url': 'tescorer_annot_res.pickle', 'exp': build_segmenter_simple_absurd_res},
 }
+
 
 def make_acceptable_shape(acceptable_mult, shape):
     new_shape = []
@@ -116,9 +121,10 @@ def make_acceptable_shape(acceptable_mult, shape):
             new_shape.append(shp)
     return tuple(new_shape)
 
+
 def setup_te_network(network_str):
     fn = TE_NETWORK_OPTIONS[network_str]['url']
-    file_url = join('http://lev.cs.rpi.edu/public/models/',fn)
+    file_url = join('https://lev.cs.rpi.edu/public/models/', fn)
     network_params_path = ut.grab_file_url(file_url, appname='ibeis')
     network_params = ut.load_cPkl(network_params_path)
     # network_params also includes normalization constants needed for the dataset, and is assumed to be a dictionary
@@ -126,26 +132,33 @@ def setup_te_network(network_str):
     network_exp = TE_NETWORK_OPTIONS[network_str]['exp']()
     ll.set_all_param_values(network_exp, network_params['params'])
     X = T.tensor4()
-    network_fn = tfn([X], ll.get_output(network_exp[-1], X, deterministic=True))
-    retdict = {'mean': network_params['mean'], 'std': network_params['std'], 'networkfn': network_fn}
+    network_fn = tfn([X], ll.get_output(
+        network_exp[-1], X, deterministic=True))
+    retdict = {'mean': network_params['mean'], 'std': network_params[
+        'std'], 'networkfn': network_fn}
     if any([i in network_str for i in ('upsample', 'jet')]):
         retdict['mod_acc'] = 8
     return retdict
+
 
 def safe_load(networkfn, img):
     try:
         return networkfn(img)
     except MemoryError:
-        print("[score_te] ERROR: GPU ran out of memory trying to process an image of size %r" % (img.shape,))
+        print("[score_te] ERROR: GPU ran out of memory trying to process an image of size %r" % (
+            img.shape,))
         return None
+
 
 def score_te(img_paths, networkfn, mean, std, mod_acc=None, batch_size=32, input_size=None):
     # load up the images in batches
     nbatches = int(math.ceil(len(img_paths) / batch_size))
     predictions = []
     for batch_ind in range(nbatches):
-        batch_slice = slice(batch_ind * batch_size, (batch_ind + 1) * batch_size)
-        print("[score_te] Batch %d/%d, processing %d images" % (batch_ind, nbatches, len(img_paths[batch_slice])))
+        batch_slice = slice(batch_ind * batch_size,
+                            (batch_ind + 1) * batch_size)
+        print("[score_te] Batch %d/%d, processing %d images" %
+              (batch_ind, nbatches, len(img_paths[batch_slice])))
         batch_imgs = []
         batch_sizes = []
         for img_path in img_paths[batch_slice]:
@@ -183,16 +196,17 @@ def score_te(img_paths, networkfn, mean, std, mod_acc=None, batch_size=32, input
                 continue
             # img.shape is (1, h, w)
             # label.shape is (1, 2, h, w)
+            # FIXME: img is a list comprehension loop variable.
+            # should it be used here?
             if label.shape[2:] != img.shape[1:]:
-                batch_outputs_r.append(cv2.resize(label[0][bg_ind], size, cv2.INTER_LANCZOS4))
+                batch_outputs_r.append(cv2.resize(
+                    label[0][bg_ind], size, cv2.INTER_LANCZOS4))
             else:
                 batch_outputs_r.append(label[0][bg_ind])
 
         predictions = chain(predictions, batch_outputs_r)
     predictions = list(predictions)
     return predictions
-
-
 
 
 def find_trailing_edge(img, start, end, center=None, n_neighbors=3):
@@ -225,6 +239,7 @@ def find_trailing_edge(img, start, end, center=None, n_neighbors=3):
     # probably can't be guaranteed regardless
     cost = np.zeros(gradient_y_image.shape)
     back = np.zeros(gradient_y_image.shape, dtype=np.int32)
+
     def get_cost(row, col, i):
         return (
             np.inf
@@ -266,8 +281,10 @@ except Exception as ex:
 
 
 if HAS_LIB:
-    ndmat_f_type = np.ctypeslib.ndpointer(dtype=np.float32, ndim=2, flags='C_CONTIGUOUS')
-    ndmat_i_type = np.ctypeslib.ndpointer(dtype=np.int32, ndim=2, flags='C_CONTIGUOUS')
+    ndmat_f_type = np.ctypeslib.ndpointer(
+        dtype=np.float32, ndim=2, flags='C_CONTIGUOUS')
+    ndmat_i_type = np.ctypeslib.ndpointer(
+        dtype=np.int32, ndim=2, flags='C_CONTIGUOUS')
 
     find_te = lib.find_trailing_edge
     find_te.argtypes = [ndmat_f_type, ctypes.c_int, ctypes.c_int,  # image and size info
@@ -291,7 +308,8 @@ def find_trailing_edge_cpp(img, start, end, center, n_neighbors=5, ignore_notch=
     # normalize so that all gradients lie in -1, 0
     norm_grad = normalize_01(gradient_y_image)
     # so now we still want to be minimizing, which means that the score_mat
-    # can be directly used (as it is going to be in 0,1 probability of it being bg)
+    # can be directly used (as it is going to be in 0,1 probability of it
+    # being bg)
 
     # next question: how do we factor in the score?
     # Option 1: Just blend it in
@@ -303,15 +321,17 @@ def find_trailing_edge_cpp(img, start, end, center, n_neighbors=5, ignore_notch=
             print(norm_grad.shape)
             raise
         if score_method == 'avg':
-            score_grad = score_weight*score_mat + (1-score_weight)*norm_grad
+            score_grad = score_weight * score_mat + \
+                (1 - score_weight) * norm_grad
         elif score_method == 'allow':
             # basically make everything that isn't classified as being part of the trailing edge (using score_weight as the thresh)
             # into np.inf
             # YUUUGGE EROSION (i.e. dilation but inverted)
-            erosion_k = np.ones((20,img.shape[1]),dtype=np.float32)
+            erosion_k = np.ones((20, img.shape[1]), dtype=np.float32)
             score_mat = cv2.erode(score_mat, erosion_k)
 
-            norm_grad[np.where(score_mat > 0.5)] = np.inf # since we're given the bg classification
+            # since we're given the bg classification
+            norm_grad[np.where(score_mat > 0.5)] = np.inf
             score_grad = norm_grad
             # this is dangerous, since if we miss any of the vital points (i.e. start / end) or disconnect them from the rest
             # of the trailing edge, we'll end up w/disastrous results. If we keep the threshold low we should (big should)
@@ -319,15 +339,16 @@ def find_trailing_edge_cpp(img, start, end, center, n_neighbors=5, ignore_notch=
         elif score_method == 'avg_thresh':
             # instead of giving a direct average, we'll basically snap a (inverted) pixel in score_mat to 0 if it's above the threshold
             # and snap it to 1 if it's below the threshold, and then average. This should emphasize those classifications that are
-            # part of the predicted trailing edge without producing artifacts from unconfident predictions
+            # part of the predicted trailing edge without producing artifacts
+            # from unconfident predictions
             thresholded_mat = np.copy(score_mat)
             thresholded_mat[np.where(score_mat < 0.5)] = 0
             thresholded_mat[np.where(score_mat > 0.5)] = 1
-            score_grad = score_weight*score_mat + (1-score_weight)*norm_grad
+            score_grad = score_weight * score_mat + \
+                (1 - score_weight) * norm_grad
         #score_grad = np.average(np.stack([norm_grad, score_mat],axis=0),axis=0)
     else:
         score_grad = norm_grad
-
 
     try:
         score_grad[:, start[0]] = 1 * np.inf
@@ -344,15 +365,18 @@ def find_trailing_edge_cpp(img, start, end, center, n_neighbors=5, ignore_notch=
             # between start, end, and center find the highest / lowest points
             # we're then going to bound the trailing edge below and above these
             lowest_point = max(start[1], center[1], end[1])
-            bound_low = min(lowest_point + int(img.shape[0] * (tol / 100)) + 1, img.shape[0])
+            bound_low = min(
+                lowest_point + int(img.shape[0] * (tol / 100)) + 1, img.shape[0])
 
             highest_point = min(start[1], center[1], end[1])
-            bound_high = max(highest_point - int(img.shape[0] * (tol / 100)) - 1, 0)
+            bound_high = max(
+                highest_point - int(img.shape[0] * (tol / 100)) - 1, 0)
 
-            score_grad[bound_low:,:] = 1 * np.inf
-            score_grad[:bound_high,:] = 1 * np.inf
+            score_grad[bound_low:, :] = 1 * np.inf
+            score_grad[:bound_high, :] = 1 * np.inf
     except IndexError:
-        print("[find_te] Bad points: start: %s, end: %s, center: %s" % (start, end, center))
+        print("[find_te] Bad points: start: %s, end: %s, center: %s" %
+              (start, end, center))
         raise
 
     outpath = np.zeros((end[0] - start[0], 2), dtype=np.int32)
@@ -375,7 +399,7 @@ def block_integral_curvatures_cpp(sizes, coords):
     """
     # assume coords are in x, y
     coords = np.array(coords, dtype=np.int32)
-    sizes = map(lambda x: int(math.ceil(coords.shape[0]*x)), sizes)
+    sizes = map(lambda x: int(math.ceil(coords.shape[0] * x)), sizes)
 
     fit_size = (np.max(coords, axis=0) -
                 np.min(coords, axis=0)) + (max(sizes) + 1)
@@ -396,7 +420,7 @@ def block_integral_curvatures_cpp(sizes, coords):
         curvs[size] = np.zeros((fixed_coords.shape[0], 1), dtype=np.float32)
         block_curv(summed_table, summed_table.shape[0], summed_table.shape[1],
                    fixed_coords, fixed_coords.shape[0], size, curvs[size])
-    #return curvs
+    # return curvs
 
     curv_arr = np.concatenate([curvs[size] for size in sizes], axis=1)
     return curv_arr
@@ -439,15 +463,15 @@ def get_distance_curvweighted(query_curv, db_curv, curv_weights, window=50):
     #ordered_sizes = sorted(curv_weights.keys())
     # we just need to stack the curvatures and make sure that the ordering is
     # consistent w/curv_weights
-    #curv_weights_nd = np.array([curv_weights[i]
+    # curv_weights_nd = np.array([curv_weights[i]
     #                            for i in ordered_sizes], dtype=np.float32)
     curv_weights_nd = np.array(curv_weights, dtype=np.float32).reshape(-1, 1)
     curv_weights_nd = np.ascontiguousarray(curv_weights_nd)
     query_curv_nd = query_curv
     db_curv_nd = db_curv
-    #query_curv_nd = np.hstack(
+    # query_curv_nd = np.hstack(
     #    [np.array(query_curv[i], dtype=np.float32).reshape(-1, 1) for i in ordered_sizes])
-    #db_curv_nd = np.hstack(
+    # db_curv_nd = np.hstack(
     #    [np.array(db_curv[i], dtype=np.float32).reshape(-1, 1) for i in ordered_sizes])
 
     query_len = query_curv_nd.shape[0]
@@ -461,12 +485,14 @@ def get_distance_curvweighted(query_curv, db_curv, curv_weights, window=50):
     distance = distance_mat[-1, -1]
     return distance
 
+
 def curv_weight_gen(rel_importance, sizes):
     # ok, so let's do this: basically each curvature is weighted as rel_importance compared to the previous one
     # so essentially we're doing each weight as rel_importance^(i)
-    # then we'll divide each by the sum of the weights to keep the sum of these weights at one while preserving the ratio
+    # then we'll divide each by the sum of the weights to keep the sum of
+    # these weights at one while preserving the ratio
     weights = [1]
-    for _ in range(1,len(sizes)): # reduce by one to account for the first weight
+    for _ in range(1, len(sizes)):  # reduce by one to account for the first weight
         weights.append(weights[-1] * rel_importance)
     weights = map(lambda x: x / sum(weights), weights)
     return weights
