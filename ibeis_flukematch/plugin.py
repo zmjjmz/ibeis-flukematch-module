@@ -778,6 +778,17 @@ class BC_DTW_Request(dtool.base.VsOneSimilarityRequest):
                          for chip, path, tips in zip(chips, tedge_list, points)]
         return overlay_chips
 
+    def render_single_result(request, cm, aid, **kwargs):
+        # HACK FOR WEB VIEWER
+        if kwargs.get('draw_fmatches'):
+            chips = request.get_fmatch_overlayed_chip([cm.qaid, aid], request.config)
+        else:
+            depc = request.depc
+            chips = depc.get('Cropped_Chips', [cm.qaid, aid], 'img', config=request.config)
+        import vtool as vt
+        out_img = vt.stack_image_list(chips)
+        return out_img
+
     def postprocess_execute(request, parent_rowids, result_list):
         qaid_list, daid_list = list(zip(*parent_rowids))
         score_list = [i[0] if i is not None else 0.0 for i in result_list]
